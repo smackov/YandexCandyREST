@@ -8,5 +8,5 @@ from . import api
 
 
 urlpatterns = [
-    path('couriers', api.CouriersListAPI.as_view(), name='couriers'),
+    path('couriers', api.CourierListAPI.as_view(), name='couriers'),
 ]
