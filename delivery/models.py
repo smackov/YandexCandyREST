@@ -32,25 +32,24 @@ class Courier(models.Model):
 
     def __repr__(self):
         return 'Courier(id={}, type={}, regions={})'.format(
-            self.courier_id, self.courier_type, self.regions.all(),
+            self.courier_id, self.courier_type, list(self.regions.all()),
         )
 
     @property
     def load_capacity(self):
         """
         The load capacity is the maximum weight Courier is able to deliver.
-        
+
         It matches the constants: COURIER_TYPES, COURIER_LOAD_CAPACITY
         """
-        
+
         load = COURIER_LOAD_CAPACITY.get(self.courier_type)
         if load:
             return load
-        
-        raise FieldError(
-            "The 'courier_type' field of Courier with courier_id={} contains "
-            "the unresolved value='{}' that absents in COURIER_LOAD_CAPACITY"
-        ).format(self.courier_id, self.courier_type)
+        raise FieldError("The 'courier_type' field of Courier with "
+                         f"courier_id={self.courier_id} contains the unresolved "
+                         f"value='{self.courier_type}' that absents in "
+                         "COURIER_LOAD_CAPACITY")
 
 
 class Region(models.Model):
@@ -62,8 +61,11 @@ class Region(models.Model):
     class Meta:
         ordering = ['id']
 
-    def __repr__(self):
+    def __str__(self):
         return 'Region ({})'.format(self.id)
+
+    def __repr__(self):
+        return str(self.id)
 
 
 class HoursAbstract(models.Model):
