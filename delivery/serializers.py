@@ -3,6 +3,7 @@ The serializers classes.
 """
 
 from rest_framework import serializers
+from rich import print
 
 from .models import Courier, Region, WorkingHours
 
@@ -12,6 +13,17 @@ class RegionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Region
         fields ='__all__'
+        
+    def to_internal_value(self, region_id: int):
+        """
+        Change input data to appropriate view.
+        
+        Get: region_id: int
+        Return: ret: OrderedDicts(['id': region_id])
+        """
+        region = {'id': region_id}
+        ret = super().to_internal_value(region)
+        return ret
 
 
 class CourierItemPostSerializer(serializers.ModelSerializer):
@@ -43,13 +55,3 @@ class CourierItemPostSerializer(serializers.ModelSerializer):
         # Save and return courier
         courier.save()
         return courier
-        
-    def to_internal_value(self, data):
-        # Change in input data representing of 'regions' field
-        # from 'regions' = [1, 2] to 'regions' = [{'id': 1}, {'id': 2}]
-        regions = []
-        for region_id in data['regions']:
-            regions.append({'id': region_id})
-        data['regions'] = regions
-            
-        return super().to_internal_value(data)
