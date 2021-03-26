@@ -34,9 +34,7 @@ class CourierItemPostSerializerTestCase(TestCase):
     def test_valid_to_true_if_get_valid_data(self):
         serializer = CourierItemPostSerializer(
             data=self.input_many_data, many=True)
-        serializer.is_valid()
-        print('\nSerializer errors: ', serializer.errors)
-        # self.assertTrue(serializer.is_valid())
+        self.assertTrue(serializer.is_valid())
 
     def test_create_function(self):
         serializer = CourierItemPostSerializer(

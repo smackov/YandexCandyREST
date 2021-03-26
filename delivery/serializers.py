@@ -7,14 +7,12 @@ from rest_framework import serializers
 from .models import Courier, Region, WorkingHours
 
 
-class RegionSerializer(serializers.ModelSerializer):
+class RegionSerializer(serializers.Serializer):
     """
     The serializer for Region model.
     """
     
-    class Meta:
-        model = Region
-        fields ='__all__'
+    id = serializers.IntegerField()
         
     def to_internal_value(self, region_id: int):
         """
@@ -56,18 +54,20 @@ class TimeIntervalSerializer(serializers.Serializer):
         ret = super().to_internal_value(item)
         return ret
 
+
 class CourierItemPostSerializer(serializers.ModelSerializer):
     """
     This serializer is used for posting and creating not existing 
     couriers.
     """
     
-    regions = RegionSerializer(many=True)
-    working_hours = TimeIntervalSerializer(many=True)
+    regions = RegionSerializer(many=True, write_only=True)
+    working_hours = TimeIntervalSerializer(many=True, write_only=True)
     
     class Meta:
         model = Courier
         fields = ['courier_id', 'courier_type', 'regions', 'working_hours']
+        extra_kwargs = {'courier_type': {'write_only': True}}
         
     def create(self, validated_data):
         # Create courier
@@ -79,7 +79,7 @@ class CourierItemPostSerializer(serializers.ModelSerializer):
         # Create regions
         regions = validated_data.pop('regions')
         for region_data in regions:
-            region = Region.objects.create(**region_data)
+            region, _ = Region.objects.get_or_create(**region_data)
             # Set region to current courier
             courier.regions.add(region)
             
@@ -94,3 +94,13 @@ class CourierItemPostSerializer(serializers.ModelSerializer):
         # Save and return courier
         courier.save()
         return courier
+
+    def to_representation(self, instance):
+        """
+        Change output data to appropriate view.
+        
+        Rename field 'courier_id' to 'id'. 
+        """
+        ret = super().to_representation(instance)
+        ret['id'] = ret.pop('courier_id')
+        return ret
