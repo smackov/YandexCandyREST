@@ -93,7 +93,8 @@ AUTH_PASSWORD_VALIDATORS = [
 # Rest framework settings
 
 REST_FRAMEWORK = {
-    "EXCEPTION_HANDLER": ("delivery.exceptions.validate_exception_handler"),
+    'EXCEPTION_HANDLER': ('delivery.exceptions.validate_exception_handler'),
+    'TEST_REQUEST_DEFAULT_FORMAT': 'json',
 }
 
 
