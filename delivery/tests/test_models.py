@@ -41,9 +41,9 @@ class CourierTestCase(TestCase):
         courier = self.region_1.couriers.all()[0]
         self.assertEqual(courier, self.courier)
 
-    def test_repr_function(self):
-        excpected_repr = 'Courier(id=1, type=foot, regions=[1, 2, 3])'
-        self.assertEqual(repr(self.courier), excpected_repr)
+    def test_str_function(self):
+        excpected_str = 'Courier(id=1, type=foot, regions=[1, 2, 3])'
+        self.assertEqual(str(self.courier), excpected_str)
 
     def test_load_capacity_when_foot_type(self):
         self.assertEqual(self.courier.load_capacity, 10)
@@ -98,9 +98,9 @@ class WorkingHoursTestCase(TestCase):
         self.working_hours_3 = WorkingHours.objects.create(
             start=time(hour=18), end=time(hour=20), courier=self.courier_2)
 
-    def test_repr_function(self):
-        excpected_repr = '09:00-12:20'
-        self.assertEqual(repr(self.working_hours_1), excpected_repr)
+    def test_str_function(self):
+        excpected_str = '09:00-12:20'
+        self.assertEqual(str(self.working_hours_1), excpected_str)
         
     def test_access_to_working_hours_from_courier_by_related_name(self):
         excpected_working_hours = [self.working_hours_1, self.working_hours_2]

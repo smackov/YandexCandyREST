@@ -30,7 +30,7 @@ class Courier(models.Model):
     class Meta:
         ordering = ['courier_id', 'courier_type']
 
-    def __repr__(self):
+    def __str__(self):
         return 'Courier(id={}, type={}, regions={})'.format(
             self.courier_id, self.courier_type, list(self.regions.all()),
         )
@@ -79,7 +79,7 @@ class HoursAbstract(models.Model):
     class Meta:
         abstract = True
 
-    def __repr__(self):
+    def __str__(self):
         return '{}-{}'.format(
             self.start.strftime('%H:%M'),
             self.end.strftime('%H:%M'),
