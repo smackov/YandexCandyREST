@@ -7,7 +7,7 @@ from datetime import time
 from django.test import TestCase
 from django.core.exceptions import FieldError
 
-from ..models import Courier, Region, WorkingHours, HoursAbstract
+from ..models import Courier, Region, WorkingHours
 
 
 class CourierTestCase(TestCase):

@@ -3,12 +3,14 @@ The serializers classes.
 """
 
 from rest_framework import serializers
-from rich import print
 
 from .models import Courier, Region, WorkingHours
 
 
 class RegionSerializer(serializers.ModelSerializer):
+    """
+    The serializer for Region model.
+    """
     
     class Meta:
         model = Region
@@ -24,7 +26,35 @@ class RegionSerializer(serializers.ModelSerializer):
         region = {'id': region_id}
         ret = super().to_internal_value(region)
         return ret
+    
 
+class TimeIntervalSerializer(serializers.Serializer):
+    """
+    The serializer represents TimeIntervalAbstract model.
+    
+    It's used for deserializing data for 'working_hours' field 
+    of Courier model.
+    """
+    
+    start = serializers.TimeField(format='%H:%M', input_formats=['%H:%M'])
+    end = serializers.TimeField(format='%H:%M', input_formats=['%H:%M'])
+        
+    def to_internal_value(self, time_interval: str):
+        """
+        Change input data to appropriate view.
+        
+        Get: time_interval: str. Example: '10:00-14:30'
+        Return: ret: OrderedDicts([('start': datetime.time), 
+                                   ('end': datetime.time)])
+        """
+        
+        start, end = time_interval.split('-')
+        item = {
+            'start': start,
+            'end': end
+        }
+        ret = super().to_internal_value(item)
+        return ret
 
 class CourierItemPostSerializer(serializers.ModelSerializer):
     """
@@ -33,10 +63,11 @@ class CourierItemPostSerializer(serializers.ModelSerializer):
     """
     
     regions = RegionSerializer(many=True)
+    working_hours = TimeIntervalSerializer(many=True)
     
     class Meta:
         model = Courier
-        fields = ['courier_id', 'courier_type', 'regions']
+        fields = ['courier_id', 'courier_type', 'regions', 'working_hours']
         
     def create(self, validated_data):
         # Create courier
@@ -51,6 +82,14 @@ class CourierItemPostSerializer(serializers.ModelSerializer):
             region = Region.objects.create(**region_data)
             # Set region to current courier
             courier.regions.add(region)
+            
+        # Create working hours
+        for working_hours in validated_data.pop('working_hours'):
+            WorkingHours.objects.create(
+                start=working_hours['start'],
+                end=working_hours['end'],
+                courier=courier,
+            )
         
         # Save and return courier
         courier.save()

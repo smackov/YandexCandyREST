@@ -68,9 +68,13 @@ class Region(models.Model):
         return str(self.id)
 
 
-class HoursAbstract(models.Model):
+class TimeIntervalAbstract(models.Model):
     """
     The abstract class are inhereted by WorkingHours.
+    
+    Has 2 fields: 
+        start: datetime.time
+        end: datetime.time
     """
 
     start = models.TimeField()
@@ -86,7 +90,7 @@ class HoursAbstract(models.Model):
         )
 
 
-class WorkingHours(HoursAbstract):
+class WorkingHours(TimeIntervalAbstract):
     """"
     The WorkingHours class represent 'working_hours' field of Courier model.
 
