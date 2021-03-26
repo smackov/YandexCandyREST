@@ -1,3 +1,11 @@
+"""
+The administration interface.
+"""
+
 from django.contrib import admin
 
-# Register your models here.
+from .models import Courier, WorkingHours, Region
+
+admin.site.register(Courier)
+admin.site.register(Region)
+admin.site.register(WorkingHours)
