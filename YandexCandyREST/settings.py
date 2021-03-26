@@ -90,6 +90,13 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 
+# Rest framework settings
+
+REST_FRAMEWORK = {
+    "EXCEPTION_HANDLER": ("delivery.exceptions.validate_exception_handler"),
+}
+
+
 # Internationalization
 
 LANGUAGE_CODE = 'en-us'

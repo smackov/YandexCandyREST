@@ -70,6 +70,10 @@ class CourierItemPostSerializer(serializers.ModelSerializer):
         extra_kwargs = {'courier_type': {'write_only': True}}
         
     def create(self, validated_data):
+        """
+        Create courier, his regions (if they don't exist), his working hours.
+        """
+        
         # Create courier
         courier = Courier.objects.create(
             courier_id=validated_data.pop('courier_id'),

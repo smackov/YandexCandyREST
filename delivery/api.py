@@ -21,7 +21,7 @@ class CourierListAPI(APIView):
     @transaction.atomic
     def post(self, request):
         serializer = CourierItemPostSerializer(data=request.data['data'], many=True)
-        if serializer.is_valid():
+        if serializer.is_valid(raise_exception=True):
             serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            response_data = {'couriers': serializer.data}
+            return Response(response_data, status=status.HTTP_201_CREATED)
