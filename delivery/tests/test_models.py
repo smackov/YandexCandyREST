@@ -7,7 +7,7 @@ from datetime import time
 from django.test import TestCase
 from django.core.exceptions import FieldError
 
-from ..models import Courier, Region, WorkingHours
+from ..models import Courier, Region, WorkingHours, Order, DeliveryHours
 
 
 class CourierTestCase(TestCase):
@@ -64,6 +64,62 @@ class CourierTestCase(TestCase):
             self.courier.load_capacity
 
 
+class OrderTestCase(TestCase):
+    """
+    The test case for Order model.
+    """
+
+    def setUp(self):
+        
+        # Create regions with id=1, id=2
+        self.region_1 = Region.objects.create(id=1)
+        self.region_2 = Region.objects.create(id=2)
+        
+        # Order data
+        self.order_data = {
+            'order_id': 1,
+            'weight': 11.11,
+            'region': self.region_1,
+        }
+        self.order = Order.objects.create(**self.order_data)
+
+        # Create delivery hours
+        self.delivery_hours_1 = DeliveryHours.objects.create(
+            start=time(hour=9), end=time(hour=12), order=self.order)
+        self.delivery_hours_2 = DeliveryHours.objects.create(
+            start=time(hour=15), end=time(hour=20), order=self.order)
+
+    def test_str_function(self):
+        excpected_str = 'Order (order_id=1, weight=11.11, region=1)'
+        self.assertEqual(str(self.order), excpected_str)
+
+    def test_order_id(self):
+        self.assertEqual(self.order.order_id, self.order_data['order_id'])
+
+    def test_regions(self):
+        self.assertEqual(self.order.region, self.order_data['region'])
+        self.assertEqual(Region.objects.count(), 2)
+        
+    def test_weight(self):
+        self.assertEqual(self.order.weight, self.order_data['weight'])
+        self.assertEqual(str(self.order.weight), str(self.order_data['weight']))
+        
+    def test_int_weight(self):
+        self.order.weight = 50
+        self.order.save()
+        self.assertEqual(self.order.weight, 50)
+        self.assertEqual(str(self.order.weight), str(50))
+        
+    def test_delivery_hours_access_by_related_name(self):
+        expected_delivery_hours = [self.delivery_hours_1, self.delivery_hours_2]
+        self.assertCountEqual(self.order.delivery_hours.all(), expected_delivery_hours)
+        self.assertEqual(self.order.delivery_hours.count(), 2)
+        
+    def test_access_from_region_by_related_name(self):
+        order = self.region_1.orders.all()[0]
+        self.assertEqual(order, self.order)
+
+
 class RegionTestCase(TestCase):
     """
     The test case for Region model.
@@ -82,6 +138,11 @@ class RegionTestCase(TestCase):
 
 
 class WorkingHoursTestCase(TestCase):
+    """
+    The test case for WorkingHours model.
+    
+    It's the 'working_hours' field for Courier model.
+    """
     
     def setUp(self):
         # Create courier
@@ -104,5 +165,37 @@ class WorkingHoursTestCase(TestCase):
         
     def test_access_to_working_hours_from_courier_by_related_name(self):
         excpected_working_hours = [self.working_hours_1, self.working_hours_2]
-        courier_1_working_hours = list(self.courier_1.working_hours.all())
-        self.assertEqual(courier_1_working_hours, excpected_working_hours)
+        self.assertCountEqual(self.courier_1.working_hours.all(), excpected_working_hours)
+
+
+class DeliveryHoursTestCase(TestCase):
+    """
+    The test case for DeliveryHours model.
+    
+    It's the 'delivery_hours' field for Order model.
+    """
+    
+    def setUp(self):
+        
+        # Order data
+        self.region_1 = Region.objects.create(id=1)
+        self.order_data = {
+            'order_id': 1,
+            'weight': 11.11,
+            'region': self.region_1,
+        }
+        self.order = Order.objects.create(**self.order_data)
+
+        # Create delivery hours
+        self.delivery_hours_1 = DeliveryHours.objects.create(
+            start=time(hour=9), end=time(hour=12, minute=20), order=self.order)
+        self.delivery_hours_2 = DeliveryHours.objects.create(
+            start=time(hour=15), end=time(hour=20), order=self.order)
+
+    def test_str_function(self):
+        excpected_str = '09:00-12:20'
+        self.assertEqual(str(self.delivery_hours_1), excpected_str)
+        
+    def test_access_to_delivery_hours_from_order_by_related_name(self):
+        excpected_delivery_hours = [self.delivery_hours_1, self.delivery_hours_2]
+        self.assertCountEqual(self.order.delivery_hours.all(), excpected_delivery_hours)

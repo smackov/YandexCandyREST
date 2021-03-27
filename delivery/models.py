@@ -18,6 +18,11 @@ COURIER_LOAD_CAPACITY = {
     'car': 50,
 }
 
+ORDER_WEIGHT_CONSTRAINTS = {
+    'min_value': 0.01,
+    'max_value': 50,
+}
+
 
 class Courier(models.Model):
     """
@@ -28,7 +33,7 @@ class Courier(models.Model):
     regions = models.ManyToManyField('Region', related_name='couriers')
 
     class Meta:
-        ordering = ['courier_id', 'courier_type']
+        ordering = ['courier_id']
 
     def __str__(self):
         return 'Courier(id={}, type={}, regions={})'.format(
@@ -52,6 +57,34 @@ class Courier(models.Model):
                          "COURIER_LOAD_CAPACITY")
 
 
+class Order(models.Model):
+    """
+    The Order model.
+    """
+
+    order_id = models.IntegerField(primary_key=True)
+    weight = models.DecimalField(max_digits=4, decimal_places=2)
+    region = models.ForeignKey(
+        'Region',
+        on_delete=models.CASCADE,
+        related_name='orders')
+    courier_performer = models.ForeignKey(
+        Courier,
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name='orders',
+    )
+
+    class Meta:
+        ordering = ['order_id']
+
+    def __str__(self):
+        return 'Order (order_id={}, weight={}, region={})'.format(
+            self.order_id, self.weight, self.region.id,
+        )
+
+
 class Region(models.Model):
     """
     The region of a city is represented as a number.
@@ -71,7 +104,7 @@ class Region(models.Model):
 class TimeIntervalAbstract(models.Model):
     """
     The abstract class are inhereted by WorkingHours.
-    
+
     Has 2 fields: 
         start: datetime.time
         end: datetime.time
@@ -82,6 +115,7 @@ class TimeIntervalAbstract(models.Model):
 
     class Meta:
         abstract = True
+        ordering = ['id']
 
     def __str__(self):
         return '{}-{}'.format(
@@ -100,4 +134,17 @@ class WorkingHours(TimeIntervalAbstract):
 
     courier = models.ForeignKey(
         Courier, on_delete=models.CASCADE, related_name='working_hours',
+    )
+
+
+class DeliveryHours(TimeIntervalAbstract):
+    """"
+    The DeliveryHours class represent 'delivery_hours' field of Order model.
+
+    The format of 'delivery_hours' is 'HH:MM-HH:MM'
+    Example: '09:00-12:00'
+    """
+
+    order = models.ForeignKey(
+        Order, on_delete=models.CASCADE, related_name='delivery_hours',
     )
