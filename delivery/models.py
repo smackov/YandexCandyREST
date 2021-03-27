@@ -2,6 +2,8 @@
 The models.
 """
 
+from typing import Optional
+
 from django.db import models
 from django.core.exceptions import FieldError
 
@@ -19,6 +21,7 @@ COURIER_LOAD_CAPACITY = {
 }
 
 ORDER_WEIGHT_CONSTRAINTS = {
+    # Minimum validated value is 0.01 after deserialization
     'min_value': 0.009,
     'max_value': 50,
 }
@@ -28,9 +31,17 @@ class Courier(models.Model):
     """
     The courier is the man delivering orders to customers.
     """
+
     courier_id = models.IntegerField(primary_key=True)
     courier_type = models.CharField(max_length=4, choices=COURIER_TYPES)
     regions = models.ManyToManyField('Region', related_name='couriers')
+    current_set_of_orders = models.ForeignKey(
+        'AssignedOrderSet',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='+')
+    # The realted_name is '+' because it will never be used.
 
     class Meta:
         ordering = ['courier_id']
@@ -52,9 +63,112 @@ class Courier(models.Model):
         if load:
             return load
         raise FieldError("The 'courier_type' field of Courier with "
-                         f"courier_id={self.courier_id} contains the unresolved "
-                         f"value='{self.courier_type}' that absents in "
-                         "COURIER_LOAD_CAPACITY")
+                         f"courier_id={self.courier_id} contains the "
+                         f"unresolved value='{self.courier_type}' that "
+                         "absents in COURIER_LOAD_CAPACITY")
+
+    def assign_orders(self) -> Optional['AssignedOrderSet']:
+        """
+        Find the appropriate orders and assign them to the courier.
+        """
+
+        # If the courier has unfinished orders in `current_set_of_orders`, 
+        # then return `current_set_of_orders`.
+        if self.current_set_of_orders:
+            if self.current_set_of_orders.notstarted_orders is None:
+                return self.current_set_of_orders
+            
+        # If the courier doesn't have `current_set_of_orders` or has, but 
+        # its unfinished orders are over, then create new AssignedOrderSet
+        # for the courier and return it. 
+        orders = self.find_matching_orders()
+        if orders:
+            self.current_set_of_orders = AssignedOrderSet.objects.create(
+                courier=self, courier_type=self.courier_type)
+            self.current_set_of_orders.notstarted_orders.set(orders)
+            return self.current_set_of_orders
+            
+        # But if we can't find appropriate
+        # orders, then return None.
+        return None
+    
+    def find_matching_orders(self):
+        """
+        Find the matching orders that mathes by parameters: 
+        region, weight and delivery/working hours.
+        """
+        
+        # Weight of each order has to be less or equal Courier's load capacity
+        orders = Order.objects.filter(weight__lte=self.load_capacity)
+        
+        # Orders hasn't had been completed already
+        orders = orders.filter(complete_time=None)
+
+        # Order hasn't be included in active assign_set
+        orders = orders.filter(set_of_orders=None)
+        
+        # Region of order has to be in courier list of regions he works in
+        orders = orders.filter(region__in=self.regions.all())
+        
+        # Orders has to have time intersections beetwen delivery hours and
+        # Courier's working hours
+        orders = self._filter_orders_by_delivery_hours(orders=orders)
+
+        return orders
+
+    def _filter_orders_by_delivery_hours(self, orders):
+        """
+        Returns matching orders from initial QuerySet: orders.
+        """
+        
+        matching_orders = []
+        for order in orders:
+            # Have we any intersections in all working hours
+            # of courier and delivery hours of order?
+            if self._is_suitable_delivery_hours(order=order):
+                matching_orders.append(order)
+        return matching_orders
+
+    def _is_suitable_delivery_hours(self, order) -> bool:
+        """
+        If find at least 1 intersection in in all working hours
+        of courier and delivery hours of order - return True.
+        Else: return False
+        """
+        for delivery_hours in order.delivery_hours.all():
+            if self._have_intersection(delivery_hours):
+                return True
+        return False
+
+    def _have_intersection(self, delivery_hours) -> bool:
+        """
+        Find the time intersections in given delivery hours (1 item)
+        and working hours of courier (many items).
+        """
+        
+        # Separate working hours to them starts and ends
+        # it is necessary for comparison of times
+        courier_starts, courier_ends = [], []
+        for working_hours in self.working_hours.all():
+            courier_starts.append(working_hours.start)
+            courier_ends.append(working_hours.end)
+        
+        # Give more brief names to delivery hours
+        order_start = delivery_hours.start
+        order_end = delivery_hours.end
+        
+        # check each time matching option
+        for courier_start, courier_end in zip(courier_starts, courier_ends):
+            # if we have a partial intersection at least 1 minute
+            if (courier_start < order_start < courier_end
+                    or courier_start < order_end < courier_end):
+                return True
+            # If all working hours into delivery hours
+            elif order_start <= courier_start and order_end >= courier_end:
+                return True
+            
+        # The time intersections don't exist
+        return False
 
 
 class Order(models.Model):
@@ -68,13 +182,12 @@ class Order(models.Model):
         'Region',
         on_delete=models.CASCADE,
         related_name='orders')
-    courier_performer = models.ForeignKey(
-        Courier,
-        blank=True,
-        null=True,
+    complete_time = models.DateTimeField(blank=True, null=True)
+    set_of_orders = models.ForeignKey(
+        'AssignedOrderSet',
         on_delete=models.SET_NULL,
-        related_name='orders',
-    )
+        blank=True,
+        null=True)
 
     class Meta:
         ordering = ['order_id']
@@ -83,6 +196,26 @@ class Order(models.Model):
         return 'Order (order_id={}, weight={}, region={})'.format(
             self.order_id, self.weight, self.region.id,
         )
+
+
+class AssignedOrderSet(models.Model):
+    """
+    This is a collection of orders assigned to a specific courier.
+
+    When orders are successfully assigned to the courier, a new set
+    of assigned orders is submitted (this model).
+    """
+
+    courier = models.ForeignKey(Courier, on_delete=models.CASCADE)
+    courier_type = models.CharField(
+        max_length=4, choices=COURIER_TYPES)
+    assign_time = models.DateTimeField(auto_now=True)
+    notstarted_orders = models.ManyToManyField(
+        Order, related_name='sets_with_notstarted_status')
+    finished_orders = models.ManyToManyField(Order)
+
+    def __str__(self):
+        return 'Order set (courier_id={})'.format(self.courier.courier_id)
 
 
 class Region(models.Model):
