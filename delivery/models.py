@@ -19,7 +19,7 @@ COURIER_LOAD_CAPACITY = {
 }
 
 ORDER_WEIGHT_CONSTRAINTS = {
-    'min_value': 0.01,
+    'min_value': 0.009,
     'max_value': 50,
 }
 

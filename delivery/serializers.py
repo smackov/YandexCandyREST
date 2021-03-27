@@ -5,7 +5,8 @@ The serializers classes.
 from rest_framework import serializers
 from rich import inspect
 
-from .models import Courier, Region, WorkingHours
+from .models import (Courier, Region, WorkingHours, Order, DeliveryHours,
+                     ORDER_WEIGHT_CONSTRAINTS)
 
 
 class RegionSerializer(serializers.Serializer):
@@ -22,11 +23,11 @@ class RegionSerializer(serializers.Serializer):
         Get: region_id: int
         Return: ret: OrderedDicts(['id': region_id])
         """
-        
+
         region = {'id': region_id}
         ret = super().to_internal_value(region)
         return ret
-    
+
     def to_representation(self, instance) -> int:
         """
         Change output data to appropriate view.
@@ -34,7 +35,7 @@ class RegionSerializer(serializers.Serializer):
         Return `id` of region as integer. In default it returns 
         OrderedDict([('id', int)]).
         """
-        
+
         ret = super().to_representation(instance)
         return ret['id']
 
@@ -66,7 +67,7 @@ class TimeIntervalSerializer(serializers.Serializer):
         }
         ret = super().to_internal_value(item)
         return ret
-    
+
     def to_representation(self, instance) -> str:
         """
         Change output data to appropriate view.
@@ -75,7 +76,7 @@ class TimeIntervalSerializer(serializers.Serializer):
         In default it returns for example: 
         OrderedDict([('start', '09:00'), ('end', '11:00')]).
         """
-        
+
         return str(instance)
 
 
@@ -162,10 +163,10 @@ class CourierItemPatchSerializer(serializers.ModelSerializer):
         # If regions: unset old regions from instance and set new regions
         regions = validated_data.get('regions')
         if regions:
-            
+
             # Unset all old regions
             instance.regions.set([])
-            
+
             # Set all new regions to the instance
             for region in regions:
                 region_id, _ = Region.objects.get_or_create(id=region['id'])
@@ -174,11 +175,11 @@ class CourierItemPatchSerializer(serializers.ModelSerializer):
         # If working hours: delete old working hours and create new ones
         working_hours = validated_data.get('working_hours')
         if working_hours:
-            
+
             # Delete old working hours instances that belong to the courier
             for working_hours_instance in instance.working_hours.all():
                 working_hours_instance.delete()
-                
+
             # Create new working hours
             for working_hours_item in working_hours:
                 WorkingHours.objects.create(
@@ -189,3 +190,45 @@ class CourierItemPatchSerializer(serializers.ModelSerializer):
         # Save and return courier
         instance.save()
         return instance
+
+
+class OrderSerializer(serializers.ModelSerializer):
+    """
+    This serializer is used for posting and creating not existing 
+    orders.
+    """
+
+    region = RegionSerializer(write_only=True)
+    delivery_hours = TimeIntervalSerializer(many=True, write_only=True)
+    weight = serializers.DecimalField(
+        max_digits=4,
+        decimal_places=2,
+        **ORDER_WEIGHT_CONSTRAINTS)
+
+    class Meta:
+        model = Order
+        fields = ['order_id', 'weight', 'region', 'delivery_hours']
+        extra_kwargs = {
+            'weight': {'write_only': True},
+        }
+
+    def create(self, validated_data):
+
+        # Create or get Region if it exists
+        region, _ = Region.objects.get_or_create(
+            id=validated_data.pop('region')['id'])
+
+        # Create Order instance
+        order = Order.objects.create(
+            order_id=validated_data.pop('order_id'),
+            weight=validated_data.pop('weight'),
+            region=region,
+        )
+        # Create delivery hours instances
+        for delivery_hours_item in validated_data.pop('delivery_hours'):
+            DeliveryHours.objects.create(
+                start=delivery_hours_item['start'],
+                end=delivery_hours_item['end'],
+                order=order,
+            )
+        return order
