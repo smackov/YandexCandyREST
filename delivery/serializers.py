@@ -200,16 +200,13 @@ class OrderSerializer(serializers.ModelSerializer):
 
     region = RegionSerializer(write_only=True)
     delivery_hours = TimeIntervalSerializer(many=True, write_only=True)
-    weight = serializers.DecimalField(
-        max_digits=4,
-        decimal_places=2,
-        **ORDER_WEIGHT_CONSTRAINTS)
 
     class Meta:
         model = Order
         fields = ['order_id', 'weight', 'region', 'delivery_hours']
         extra_kwargs = {
-            'weight': {'write_only': True},
+            'weight': {'write_only': True, 
+                       **ORDER_WEIGHT_CONSTRAINTS,},
         }
 
     def create(self, validated_data):
@@ -232,3 +229,14 @@ class OrderSerializer(serializers.ModelSerializer):
                 order=order,
             )
         return order
+
+    def to_representation(self, instance):
+        """
+        Change output data to appropriate view.
+
+        Rename field 'order_id' to 'id'. 
+        """
+        ret = super().to_representation(instance)
+        ret['id'] = ret.pop('order_id')
+        return ret
+    

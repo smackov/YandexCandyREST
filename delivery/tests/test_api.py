@@ -8,7 +8,7 @@ from rest_framework.test import APITestCase
 from django.urls import reverse
 from rest_framework import status
 
-from ..models import Courier, Region, WorkingHours
+from ..models import Courier, Region, WorkingHours, Order, DeliveryHours
 
 
 class CourierListAPITestCase(APITestCase):
@@ -128,4 +128,76 @@ class CourierItemAPITestCase(APITestCase):
         url = reverse('courier-item', args=[1])
         self.input_data_foot['courier_type'] = 'zuzu'
         response = self.client.patch(url, self.input_data_foot, format='json')
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)         
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST) 
+
+
+class OrderListAPITestCase(APITestCase):
+    """
+    The test case for OrderListAPI class.
+    """
+    
+    def setUp(self):
+        # Input data
+        self.input_data = {'data': []}
+        self.input_data_1 = {
+            "order_id": 1,
+            "weight": 0.23,
+            "region": 12,
+            "delivery_hours": ["09:00-18:00"]
+        }
+        self.input_data_2 = {
+            "order_id": 2,
+            "weight": 0.01,
+            "region": 22,
+            "delivery_hours": ["09:00-12:00", "16:00-21:30"]
+        }
+        self.input_many_data = [self.input_data_1, self.input_data_2]
+
+    def test_post_one_valid_order(self):
+        url = reverse('orders')
+        self.input_data['data'].append(self.input_data_1)
+        response = self.client.post(url, self.input_data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)       
+        self.assertEqual(response.data, {'orders': [{'id': 1}]})
+        
+        # Test order instance
+        self.assertEqual(Order.objects.count(), 1)
+        order = Order.objects.get()
+        self.assertEqual(order.order_id, self.input_data_1['order_id'])
+        self.assertEqual(str(order.weight), str(self.input_data_1['weight']))
+        self.assertEqual(Region.objects.count(), 1)
+        self.assertEqual(DeliveryHours.objects.count(), 1)   
+
+    def test_post_two_valid_couriers(self):
+        url = reverse('orders')
+        self.input_data['data'].append(self.input_data_1)
+        self.input_data['data'].append(self.input_data_2)
+        response = self.client.post(url, self.input_data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)       
+        self.assertEqual(response.data, {'orders': [{'id': 1}, {'id': 2}]})
+        
+        # Test order instances
+        self.assertEqual(Order.objects.count(), 2)
+        order_1 = Order.objects.get(order_id=1)
+        order_2 = Order.objects.get(order_id=2)
+        self.assertEqual(order_1.order_id, self.input_data_1['order_id'])
+        self.assertEqual(order_2.order_id, self.input_data_2['order_id'])
+        self.assertEqual(str(order_1.weight), str(self.input_data_1['weight']))
+        self.assertEqual(str(order_2.weight), str(self.input_data_2['weight']))
+        self.assertEqual(Region.objects.count(), 2)
+        self.assertEqual(DeliveryHours.objects.count(), 3) 
+        
+
+    def test_post_two_invalid_couriers(self):
+        
+        self.input_data_1['weight'] = 10.001
+        self.input_data_2['order_id'] = 'none'
+        
+        self.input_data['data'].append(self.input_data_1)
+        self.input_data['data'].append(self.input_data_2)
+        url = reverse('orders')
+        response = self.client.post(url, self.input_data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)  
+        self.assertEqual(Order.objects.count(), 0)
+        self.assertEqual(Region.objects.count(), 0)
+        self.assertEqual(DeliveryHours.objects.count(), 0)        

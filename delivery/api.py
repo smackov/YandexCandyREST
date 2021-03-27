@@ -10,7 +10,8 @@ from django.db import transaction
 
 from .serializers import (
     CourierItemPostSerializer,
-    CourierItemPatchSerializer)
+    CourierItemPatchSerializer,
+    OrderSerializer)
 from .models import Courier
 
 
@@ -53,3 +54,20 @@ class CourierItemAPI(APIView):
             serializer.save()
             return Response(serializer.data, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class OrderListAPI(APIView):
+    """
+    Api for creating orders.
+
+    Get list of orders, valide them and save in db.
+    """
+
+    @transaction.atomic
+    def post(self, request):
+        serializer = OrderSerializer(
+            data=request.data['data'], many=True)
+        if serializer.is_valid(raise_exception=True):
+            serializer.save()
+            response_data = {'orders': serializer.data}
+            return Response(response_data, status=status.HTTP_201_CREATED)
