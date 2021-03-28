@@ -283,4 +283,14 @@ class AssignOrderSetSerializer(serializers.ModelSerializer):
         # Move to end assign_time in the representation view
         ret.move_to_end('assign_time')
         return ret
+  
+  
+class CompleteOrderSerializer(serializers.Serializer):
+    """
+    The serializer for getting complete order posts.
+    """
     
+    courier_id = serializers.IntegerField()
+    order_id = serializers.IntegerField()
+    complete_time = serializers.DateTimeField()
+ 

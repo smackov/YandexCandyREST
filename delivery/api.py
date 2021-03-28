@@ -14,8 +14,9 @@ from .serializers import (
     CourierIdSerializer,
     OrderSerializer,
     OrderIdSerializer,
-    AssignOrderSetSerializer)
-from .models import Courier
+    AssignOrderSetSerializer,
+    CompleteOrderSerializer)
+from .models import Courier, Order
 from .exceptions import OrderAssignBadRequest
 
 
@@ -42,7 +43,7 @@ class CourierItemAPI(APIView):
 
     Get courier properties, valide them and update the courier.
     """
-    
+
     def get_object(self, pk):
         try:
             courier = Courier.objects.get(courier_id=pk)
@@ -76,22 +77,22 @@ class OrderListAPI(APIView):
             orders_ids = OrderIdSerializer(orders, many=True)
             response_data = {'orders': orders_ids.data}
             return Response(response_data, status=status.HTTP_201_CREATED)
-        
-    
+
+
 class OrdersAssignAPI(APIView):
     """
     Api for assigning orders to the courier.
-    
+
     return AssignOrderSet: orders (notstarted) and assign time.
     """
-    
+
     def get_object(self, pk):
         try:
             courier = Courier.objects.get(courier_id=pk)
         except Courier.DoesNotExist:
             raise OrderAssignBadRequest
         return courier
-    
+
     @transaction.atomic
     def post(self, request):
         serializer = CourierIdSerializer(data=request.data)
@@ -103,3 +104,45 @@ class OrdersAssignAPI(APIView):
             data = AssignOrderSetSerializer(order_set).data
             return Response(data, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class OrdersCompleteAPI(APIView):
+    """
+    Api to mark the order as completed.
+    """
+
+    def get_courier(self, pk):
+        try:
+            courier = Courier.objects.get(courier_id=pk)
+        except Courier.DoesNotExist:
+            courier = None
+        return courier
+
+    def get_order(self, pk):
+        try:
+            order = Order.objects.get(order_id=pk)
+        except Order.DoesNotExist:
+            order = None
+        return order
+
+    def post(self, request):
+        serializer = CompleteOrderSerializer(data=request.data)
+
+        # If request.data isn't valid - return HTTP 400
+        if not serializer.is_valid():
+            return Response(status=status.HTTP_400_BAD_REQUEST)
+
+        # Get courier and order instances
+        courier = self.get_courier(pk=serializer.data['courier_id'])
+        order = self.get_order(pk=serializer.data['order_id'])
+
+        # If courier or order doesn't exist - return HTTP 400
+        if courier is None or order is None:
+            return Response(status=status.HTTP_400_BAD_REQUEST)
+
+        # If all data is valid and the instances exist
+        is_success, _ = order.complete(courier=courier,
+                       complete_time=serializer.data['complete_time'])
+        if is_success:
+            return Response({'order_id': order.order_id}, status=status.HTTP_200_OK)
+        return Response(status=status.HTTP_400_BAD_REQUEST)
