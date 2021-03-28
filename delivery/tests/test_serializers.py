@@ -6,8 +6,12 @@ from datetime import time
 
 from django.test import TestCase
 
-from ..serializers import (CourierItemPostSerializer, OrderSerializer)
-from ..models import Courier, Region, WorkingHours, Order, DeliveryHours
+from ..serializers import (
+    CourierItemPostSerializer, 
+    OrderSerializer,
+    AssignOrderSetSerializer)
+from ..models import (
+    Courier, Region, WorkingHours, Order, DeliveryHours, AssignedOrderSet)
 
 
 class CourierItemPostSerializerTestCase(TestCase):
@@ -182,3 +186,64 @@ class OrderSerializerTestCase(TestCase):
                               DeliveryHours.objects.all())
         self.assertEqual(str(DeliveryHours.objects.all()[0]), data['delivery_hours'][0])
         self.assertEqual(str(DeliveryHours.objects.all()[1]), data['delivery_hours'][1])
+
+
+class AssignOrdersSetSerializerTestCase(TestCase):
+    """
+    The test case for AssignOrderSetSerializer class.
+    """
+
+    def setUp(self):
+        # Create regions: 1, 2, 3, 4, 5
+        for region_number in range(1, 6):
+            region = Region.objects.create(id=region_number)
+            setattr(self, f'region_{region_number}', region)
+
+        # Create courier
+        self.courier = Courier.objects.create(
+            courier_id=1, courier_type='foot')
+        self.courier.regions.set([1])
+
+        # Create working hours
+        self.working_hours_1 = WorkingHours.objects.create(
+            start=time(hour=9), end=time(hour=12), courier=self.courier)
+        self.working_hours_2 = WorkingHours.objects.create(
+            start=time(hour=18), end=time(hour=20), courier=self.courier)
+
+        # Order data
+        self.order_data_1 = {
+            'order_id': 1,
+            'weight': 4,
+            'region': self.region_1,
+        }
+        self.order_data_2 = {
+            'order_id': 2,
+            'weight': 3,
+            'region': self.region_2,
+        }
+        self.order_1 = Order.objects.create(**self.order_data_1)
+        self.order_2 = Order.objects.create(**self.order_data_2)
+
+        # Create delivery hours
+        self.delivery_hours_1 = DeliveryHours.objects.create(
+            start=time(hour=9), end=time(hour=12), order=self.order_1)
+        self.delivery_hours_2 = DeliveryHours.objects.create(
+            start=time(hour=15), end=time(hour=20), order=self.order_2)
+
+        # Create order set
+        self.order_set = AssignedOrderSet.objects.create(
+            courier=self.courier, courier_type=self.courier.courier_type)
+        self.order_set.notstarted_orders.set([self.order_1, self.order_2])
+        
+        def test_field_count(self):
+            orders = Order.objects.all()
+            serializer = AssignOrderSetSerializer(orders)
+            data = serializer.data
+            self.assertCountEqual(data.keys(), ['assign_time', 'orders'])
+        
+        def test_assign_time_is_the_last(self):
+            orders = Order.objects.all()
+            serializer = AssignOrderSetSerializer(orders)
+            data = serializer.data
+            self.assertEqual(data.popitem[0], 'assign_time')    
+        

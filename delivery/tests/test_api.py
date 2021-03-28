@@ -3,12 +3,15 @@ Test api.
 """
 
 from datetime import time
+import json
 
 from rest_framework.test import APITestCase
 from django.urls import reverse
 from rest_framework import status
+from rich import inspect
 
-from ..models import Courier, Region, WorkingHours, Order, DeliveryHours
+from ..models import (
+    Courier, Region, WorkingHours, Order, DeliveryHours, AssignedOrderSet)
 
 
 class CourierListAPITestCase(APITestCase):
@@ -200,4 +203,136 @@ class OrderListAPITestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)  
         self.assertEqual(Order.objects.count(), 0)
         self.assertEqual(Region.objects.count(), 0)
-        self.assertEqual(DeliveryHours.objects.count(), 0)        
+        self.assertEqual(DeliveryHours.objects.count(), 0) 
+
+
+class OrdersAssignAPITestCase(APITestCase):
+    """
+    The test case for OrdersAssignAPI class.
+    """  
+
+    def setUp(self):
+        # Create regions: 1, 2, 3, 4, 5
+        for region_number in range(1, 6):
+            region = Region.objects.create(id=region_number)
+            setattr(self, f'region_{region_number}', region)
+
+        # Create courier
+        self.courier = Courier.objects.create(
+            courier_id=1, courier_type='foot')
+        self.courier.regions.set([1])
+
+        # Create working hours
+        self.working_hours_1 = WorkingHours.objects.create(
+            start=time(hour=9), end=time(hour=12), courier=self.courier)
+        self.working_hours_2 = WorkingHours.objects.create(
+            start=time(hour=18), end=time(hour=20), courier=self.courier)
+
+        # Order data
+        self.order_data_1 = {
+            'order_id': 1,
+            'weight': 4,
+            'region': self.region_1,
+        }
+        self.order_data_2 = {
+            'order_id': 2,
+            'weight': 3,
+            'region': self.region_2,
+        }
+        self.order_1 = Order.objects.create(**self.order_data_1)
+        self.order_2 = Order.objects.create(**self.order_data_2)
+
+        # Create delivery hours
+        self.delivery_hours_1 = DeliveryHours.objects.create(
+            start=time(hour=9), end=time(hour=12), order=self.order_1)
+        self.delivery_hours_2 = DeliveryHours.objects.create(
+            start=time(hour=15), end=time(hour=20), order=self.order_2)
+        
+    def test_post_valid_courier_with_potential_orders(self):
+        url = reverse('orders-assign')
+        data = {'courier_id': self.courier.courier_id}
+        response = self.client.post(url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.courier.refresh_from_db()
+        assign_time = self.courier.current_set_of_orders.assign_time
+        expected_response_data = {
+            'orders': [{'id': 1}],
+            'assign_time': assign_time.isoformat().replace('+00:00', 'Z')
+        }    
+        self.assertEqual(json.loads(response.content), expected_response_data)
+        
+    def test_post_valid_courier_without_potential_orders(self):
+        self.order_1.weight = 40
+        self.order_1.save()
+        url = reverse('orders-assign')
+        data = {'courier_id': self.courier.courier_id}
+        response = self.client.post(url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data, [])
+        
+    def test_post_invalid_courier(self):
+        url = reverse('orders-assign')
+        data = {'courier_id': 999}
+        response = self.client.post(url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data, {'detail': "Courier doesn't exist"})
+        
+    def test_post_invalid_fields(self):
+        url = reverse('orders-assign')
+        data = {'courier_id2': 999}
+        response = self.client.post(url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(json.loads(response.content), {'courier_id': ["This field is required."]})
+        
+    def test_post_valid_courier_with_notstarted_and_finished_orders(self):
+        self.order_set = AssignedOrderSet.objects.create(
+            courier=self.courier, courier_type=self.courier.courier_type
+        )
+        self.order_set.notstarted_orders.set([self.order_1])
+        self.order_set.finished_orders.set([self.order_2])
+        self.courier.current_set_of_orders = self.order_set
+        self.courier.save()
+        
+        url = reverse('orders-assign')
+        data = {'courier_id': self.courier.courier_id}
+        response = self.client.post(url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        expected_response_data = {
+            'orders': [{'id': 1}],
+            'assign_time': self.order_set.assign_time.isoformat().replace('+00:00', 'Z')
+        }    
+        self.assertEqual(json.loads(response.content), expected_response_data)
+        
+    def test_post_valid_courier_with_all_finished_orders(self):
+        self.order_data_3 = {
+            'order_id': 3,
+            'weight': 3,
+            'region': self.region_1,
+        }
+        self.order_3 = Order.objects.create(**self.order_data_3)
+        self.delivery_hours_3 = DeliveryHours.objects.create(
+            start=time(hour=9), end=time(hour=12), order=self.order_3)
+        
+        self.order_set = AssignedOrderSet.objects.create(
+            courier=self.courier, courier_type=self.courier.courier_type
+        )
+        self.order_set.finished_orders.set([self.order_1, self.order_2])
+        self.order_1.set_of_orders = self.order_set
+        self.order_2.set_of_orders = self.order_set
+        self.order_1.save()
+        self.order_2.save()
+        self.courier.current_set_of_orders = self.order_set
+        self.courier.save()
+        
+        url = reverse('orders-assign')
+        data = {'courier_id': self.courier.courier_id}
+        response = self.client.post(url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.courier.refresh_from_db()
+        assign_time = self.courier.current_set_of_orders.assign_time
+        expected_response_data = {
+            'orders': [{'id': 3}],
+            'assign_time': assign_time.isoformat().replace('+00:00', 'Z')
+        }    
+        self.assertEqual(json.loads(response.content), expected_response_data)
+         
