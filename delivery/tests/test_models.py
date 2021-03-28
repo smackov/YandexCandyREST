@@ -401,7 +401,8 @@ class AssignedOrderSetTestCase(TestCase):
         self.order_set.notstarted_orders.add(self.order)
 
     def test_str_function(self):
-        excpected_str = 'Order set (id=1, courier_id=1)'
+        excpected_str = 'Order set (id={}, courier_id=1)'.format(
+            self.order_set.id)
         self.assertEqual(str(self.order_set), excpected_str)
 
 
@@ -494,5 +495,7 @@ class OrderCompleteTestCase(TestCase):
 
         self.order_1.refresh_from_db()
         self.assertEqual(self.order_1.complete_time, self.complete_time)
-        self.assertEqual(list(self.order_set.notstarted_orders.all()), [self.order_2])
-        self.assertEqual(list(self.order_set.finished_orders.all()), [self.order_1])
+        self.assertEqual(
+            list(self.order_set.notstarted_orders.all()), [self.order_2])
+        self.assertEqual(
+            list(self.order_set.finished_orders.all()), [self.order_1])
