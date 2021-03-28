@@ -130,20 +130,23 @@ class CourierAssignOrdersTestCase(TestCase):
         self.assertEqual(order_set.courier, self.courier)
         self.assertEqual(order_set.courier_type, self.courier.courier_type)
         self.assertCountEqual(order_set.notstarted_orders.all(), [self.order_1])
+        self.order_1.refresh_from_db()
+        self.assertEqual(self.courier.current_set_of_orders, self.order_1.set_of_orders)
 
     def test_assign_orders_when_current_set_of_orders_not_exist(self):
         order_set = self.courier.assign_orders()
         self.assertNotEqual(order_set.id, self.order_set.id)
-        self.assertEqual(AssignedOrderSet.objects.count(), 1)
+        self.assertEqual(AssignedOrderSet.objects.count(), 2)
+        self.assertEqual(self.courier.current_set_of_orders, order_set)
+        self.order_1.refresh_from_db()
+        self.assertEqual(self.courier.current_set_of_orders, self.order_1.set_of_orders)
 
     def test_assign_orders_when_current_set_of_orders_not_exist_and_not_matched_orders(self):
         self.order_1.weight = 40
         self.order_1.save()
         order_set = self.courier.assign_orders()
-        self.assertIsNone(order_set, self.order_set)
-        self.assertEqual(order_set.courier, self.courier)
-        self.assertEqual(order_set.courier_type, self.courier.courier_type)
-        self.assertCountEqual(order_set.notstarted_orders.all(), [self.order_1])
+        self.assertIsNone(order_set)
+        self.assertIsNone(self.courier.current_set_of_orders)
 
     def test_find_orders(self):
         orders = self.courier.find_matching_orders()
@@ -394,5 +397,5 @@ class AssignedOrderSetTestCase(TestCase):
         self.order_set.notstarted_orders.add(self.order)
 
     def test_str_function(self):
-        excpected_str = 'Order set (courier_id=1)'
+        excpected_str = 'Order set (id=1, courier_id=1)'
         self.assertEqual(str(self.order_set), excpected_str)

@@ -75,7 +75,7 @@ class Courier(models.Model):
         # If the courier has unfinished orders in `current_set_of_orders`, 
         # then return `current_set_of_orders`.
         if self.current_set_of_orders:
-            if self.current_set_of_orders.notstarted_orders is None:
+            if self.current_set_of_orders.notstarted_orders.count() != 0:
                 return self.current_set_of_orders
             
         # If the courier doesn't have `current_set_of_orders` or has, but 
@@ -83,9 +83,15 @@ class Courier(models.Model):
         # for the courier and return it. 
         orders = self.find_matching_orders()
         if orders:
+            # Create new AssignedOrderSet and pin it to the courier
             self.current_set_of_orders = AssignedOrderSet.objects.create(
                 courier=self, courier_type=self.courier_type)
+            # All the matching orders put in notstarted_orders stack
             self.current_set_of_orders.notstarted_orders.set(orders)
+            # Set new order set to each order in orders
+            for order in orders:
+                order.set_of_orders = self.current_set_of_orders
+                order.save()
             return self.current_set_of_orders
             
         # But if we can't find appropriate
@@ -215,7 +221,8 @@ class AssignedOrderSet(models.Model):
     finished_orders = models.ManyToManyField(Order)
 
     def __str__(self):
-        return 'Order set (courier_id={})'.format(self.courier.courier_id)
+        return 'Order set (id={}, courier_id={})'.format(
+            self.id, self.courier.courier_id)
 
 
 class Region(models.Model):
