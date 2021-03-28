@@ -8,7 +8,6 @@ import json
 from rest_framework.test import APITestCase
 from django.urls import reverse
 from rest_framework import status
-from rich import inspect
 
 from ..models import (
     Courier, Region, WorkingHours, Order, DeliveryHours, AssignedOrderSet)

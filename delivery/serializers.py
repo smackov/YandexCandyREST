@@ -3,7 +3,6 @@ The serializers classes.
 """
 
 from rest_framework import serializers
-from rich import inspect
 
 from .models import (Courier, Region, WorkingHours, Order, DeliveryHours,
                      AssignedOrderSet, ORDER_WEIGHT_CONSTRAINTS)
