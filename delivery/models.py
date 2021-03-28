@@ -2,7 +2,7 @@
 The models.
 """
 
-from typing import Optional
+from typing import Optional, Tuple
 
 from django.db import models
 from django.core.exceptions import FieldError
@@ -201,8 +201,33 @@ class Order(models.Model):
 
     def __str__(self):
         return 'Order (order_id={}, weight={}, region={})'.format(
-            self.order_id, self.weight, self.region.id,
-        )
+            self.order_id, self.weight, self.region.id)
+        
+    def complete(self, courier, complete_time) -> Tuple[bool, str]:
+        """
+        Complete the order. 
+        
+        Fill out complete_time.
+        """
+        
+        # If the order was not assigned
+        if not self.set_of_orders:
+            return False, 'The order was not assigned'
+        
+        # If the order was assigned to another courier
+        if self.set_of_orders.courier != courier:
+            return False, 'The order was assigned to another courier'
+        
+        # If data is valid:
+        # Write compete time
+        self.complete_time = complete_time
+        self.save()
+        # Move order from notstarted_orders to finished_orders
+        # in its set_or_orders
+        self.set_of_orders.notstarted_orders.remove(self)
+        self.set_of_orders.finished_orders.add(self)
+        
+        return True, 'OK'
 
 
 class AssignedOrderSet(models.Model):

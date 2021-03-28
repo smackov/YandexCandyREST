@@ -2,7 +2,7 @@
 The tests of models.
 """
 
-from datetime import datetime, time
+from datetime import datetime, time, timezone
 
 from django.test import TestCase
 from django.core.exceptions import FieldError
@@ -129,9 +129,11 @@ class CourierAssignOrdersTestCase(TestCase):
         self.assertNotEqual(order_set.id, self.order_set.id)
         self.assertEqual(order_set.courier, self.courier)
         self.assertEqual(order_set.courier_type, self.courier.courier_type)
-        self.assertCountEqual(order_set.notstarted_orders.all(), [self.order_1])
+        self.assertCountEqual(
+            order_set.notstarted_orders.all(), [self.order_1])
         self.order_1.refresh_from_db()
-        self.assertEqual(self.courier.current_set_of_orders, self.order_1.set_of_orders)
+        self.assertEqual(self.courier.current_set_of_orders,
+                         self.order_1.set_of_orders)
 
     def test_assign_orders_when_current_set_of_orders_not_exist(self):
         order_set = self.courier.assign_orders()
@@ -140,7 +142,8 @@ class CourierAssignOrdersTestCase(TestCase):
         self.courier.save()
         self.assertEqual(self.courier.current_set_of_orders, order_set)
         self.order_1.refresh_from_db()
-        self.assertEqual(self.courier.current_set_of_orders, self.order_1.set_of_orders)
+        self.assertEqual(self.courier.current_set_of_orders,
+                         self.order_1.set_of_orders)
 
     def test_assign_orders_when_current_set_of_orders_not_exist_and_not_matched_orders(self):
         self.order_1.weight = 40
@@ -400,3 +403,96 @@ class AssignedOrderSetTestCase(TestCase):
     def test_str_function(self):
         excpected_str = 'Order set (id=1, courier_id=1)'
         self.assertEqual(str(self.order_set), excpected_str)
+
+
+class OrderCompleteTestCase(TestCase):
+    """
+    The test case for methon 'complete' of Order model.
+    """
+
+    def setUp(self):
+        # Create regions: 1, 2, 3, 4, 5
+        for region_number in range(1, 6):
+            region = Region.objects.create(id=region_number)
+            setattr(self, f'region_{region_number}', region)
+
+        # Create courier
+        self.courier = Courier.objects.create(
+            courier_id=1, courier_type='foot')
+        self.courier.regions.set([1])
+
+        # Create working hours
+        self.working_hours_1 = WorkingHours.objects.create(
+            start=time(hour=9), end=time(hour=12), courier=self.courier)
+        self.working_hours_2 = WorkingHours.objects.create(
+            start=time(hour=18), end=time(hour=20), courier=self.courier)
+
+        # Order data
+        self.order_data_1 = {
+            'order_id': 1,
+            'weight': 4,
+            'region': self.region_1,
+        }
+        self.order_data_2 = {
+            'order_id': 2,
+            'weight': 3,
+            'region': self.region_2,
+        }
+        self.order_data_3 = {
+            'order_id': 3,
+            'weight': 15,
+            'region': self.region_3,
+        }
+        self.order_1 = Order.objects.create(**self.order_data_1)
+        self.order_2 = Order.objects.create(**self.order_data_2)
+        self.order_3 = Order.objects.create(**self.order_data_3)
+
+        # Create delivery hours
+        self.delivery_hours_1 = DeliveryHours.objects.create(
+            start=time(hour=9), end=time(hour=12), order=self.order_1)
+        self.delivery_hours_2 = DeliveryHours.objects.create(
+            start=time(hour=15), end=time(hour=20), order=self.order_2)
+        self.delivery_hours_3 = DeliveryHours.objects.create(
+            start=time(hour=15), end=time(hour=20), order=self.order_3)
+
+        # Create order set
+        self.order_set = AssignedOrderSet.objects.create(
+            courier=self.courier, courier_type=self.courier.courier_type)
+        self.order_set.notstarted_orders.set([self.order_1, self.order_2])
+        self.order_1.set_of_orders = self.order_set
+        self.order_1.save()
+        self.order_2.set_of_orders = self.order_set
+        self.order_2.save()
+
+        # Complete time
+        self.complete_time = datetime(
+            year=2020, month=10, day=1, hour=10,
+            minute=15, microsecond=345, tzinfo=timezone.utc)
+
+    def test_complete_order_1_if_not_set_of_orders(self):
+        self.order_1.set_of_orders = None
+        self.order_1.save()
+        status, msg = self.order_1.complete(
+            courier=self.courier, complete_time=self.complete_time)
+        self.assertEqual(status, False)
+        self.assertEqual(msg, 'The order was not assigned')
+
+    def test_complete_order_1_if_not_wrong_courier(self):
+        self.another_courier = Courier.objects.create(
+            courier_id=10, courier_type='bike'
+        )
+        status, msg = self.order_1.complete(
+            courier=self.another_courier, complete_time=self.complete_time)
+        self.assertEqual(status, False)
+        self.assertEqual(msg, 'The order was assigned to another courier')
+
+    def test_complete_order_1_all_valid(self):
+        status, msg = self.order_1.complete(
+            courier=self.courier, complete_time=self.complete_time)
+        self.assertEqual(status, True)
+        self.assertEqual(msg, 'OK')
+
+        self.order_1.refresh_from_db()
+        self.assertEqual(self.order_1.complete_time, self.complete_time)
+        self.assertEqual(list(self.order_set.notstarted_orders.all()), [self.order_2])
+        self.assertEqual(list(self.order_set.finished_orders.all()), [self.order_1])
