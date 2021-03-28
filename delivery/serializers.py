@@ -6,7 +6,7 @@ from rest_framework import serializers
 from rich import inspect
 
 from .models import (Courier, Region, WorkingHours, Order, DeliveryHours,
-                     ORDER_WEIGHT_CONSTRAINTS)
+                     AssignedOrderSet, ORDER_WEIGHT_CONSTRAINTS)
 
 
 class RegionSerializer(serializers.Serializer):
@@ -192,6 +192,14 @@ class CourierItemPatchSerializer(serializers.ModelSerializer):
         return instance
 
 
+class CourierIdSerializer(serializers.Serializer):
+    """
+    The serializer for getting posts with one field: 'courier_id'
+    """
+
+    courier_id = serializers.IntegerField()
+
+
 class OrderSerializer(serializers.ModelSerializer):
     """
     This serializer is used for posting and creating not existing 
@@ -205,8 +213,8 @@ class OrderSerializer(serializers.ModelSerializer):
         model = Order
         fields = ['order_id', 'weight', 'region', 'delivery_hours']
         extra_kwargs = {
-            'weight': {'write_only': True, 
-                       **ORDER_WEIGHT_CONSTRAINTS,},
+            'weight': {'write_only': True,
+                       **ORDER_WEIGHT_CONSTRAINTS, },
         }
 
     def create(self, validated_data):
@@ -230,6 +238,17 @@ class OrderSerializer(serializers.ModelSerializer):
             )
         return order
 
+
+class OrderIdSerializer(serializers.ModelSerializer):
+    """
+    The serializer for Order model with only one field: 'order_id'.
+    """
+
+    class Meta:
+        model = Order
+        fields = ['order_id']
+        read_only_fields = ['order_id']
+
     def to_representation(self, instance):
         """
         Change output data to appropriate view.
@@ -238,5 +257,30 @@ class OrderSerializer(serializers.ModelSerializer):
         """
         ret = super().to_representation(instance)
         ret['id'] = ret.pop('order_id')
+        return ret
+
+
+class AssignOrderSetSerializer(serializers.ModelSerializer):
+    """
+    The serializer for AssignOrderSet model.
+    """
+    
+    notstarted_orders = OrderIdSerializer(many=True, read_only=True)
+    
+    class Meta:
+        model = AssignedOrderSet
+        fields = ['notstarted_orders', 'assign_time']
+        read_only_fields = ['notstarted_orders', 'assign_time']
+
+    def to_representation(self, instance):
+        """
+        Change output data to appropriate view.
+
+        Rename field 'notstarted_orders' to 'orders'. 
+        """
+        ret = super().to_representation(instance)
+        ret['orders'] = ret.pop('notstarted_orders')
+        # Move to end assign_time in the representation view
+        ret.move_to_end('assign_time')
         return ret
     

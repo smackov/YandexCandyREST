@@ -2,6 +2,7 @@
 The utils.
 """
 
+from rest_framework.exceptions import APIException
 from rest_framework.exceptions import ValidationError
 from rest_framework.views import exception_handler
 from rich import print, inspect
@@ -27,3 +28,10 @@ def validate_exception_handler(exc, context):
         }
 
     return response
+
+
+class OrderAssignBadRequest(APIException):
+    status_code = 400
+    default_detail = "Courier doesn't exist"
+    default_code = 'Bad request'
+    

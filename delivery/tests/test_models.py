@@ -137,6 +137,7 @@ class CourierAssignOrdersTestCase(TestCase):
         order_set = self.courier.assign_orders()
         self.assertNotEqual(order_set.id, self.order_set.id)
         self.assertEqual(AssignedOrderSet.objects.count(), 2)
+        self.courier.save()
         self.assertEqual(self.courier.current_set_of_orders, order_set)
         self.order_1.refresh_from_db()
         self.assertEqual(self.courier.current_set_of_orders, self.order_1.set_of_orders)

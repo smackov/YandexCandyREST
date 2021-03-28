@@ -86,6 +86,7 @@ class Courier(models.Model):
             # Create new AssignedOrderSet and pin it to the courier
             self.current_set_of_orders = AssignedOrderSet.objects.create(
                 courier=self, courier_type=self.courier_type)
+            self.save()
             # All the matching orders put in notstarted_orders stack
             self.current_set_of_orders.notstarted_orders.set(orders)
             # Set new order set to each order in orders
