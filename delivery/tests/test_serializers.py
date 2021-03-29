@@ -235,15 +235,17 @@ class AssignOrdersSetSerializerTestCase(TestCase):
             courier=self.courier, courier_type=self.courier.courier_type)
         self.order_set.notstarted_orders.set([self.order_1, self.order_2])
         
-        def test_field_count(self):
-            orders = Order.objects.all()
-            serializer = AssignOrderSetSerializer(orders)
-            data = serializer.data
-            self.assertCountEqual(data.keys(), ['assign_time', 'orders'])
-        
-        def test_assign_time_is_the_last(self):
-            orders = Order.objects.all()
-            serializer = AssignOrderSetSerializer(orders)
-            data = serializer.data
-            self.assertEqual(data.popitem[0], 'assign_time')    
+    def test_field_count(self):
+        orders = Order.objects.all()
+        print(orders)
+        serializer = AssignOrderSetSerializer(self.order_set)
+        data = serializer.data
+        print('\n\nDATA: ', data)
+        self.assertCountEqual(data.keys(), ['assign_time', 'orders'])
+    
+    def test_assign_time_is_the_last(self):
+        orders = Order.objects.all()
+        serializer = AssignOrderSetSerializer(self.order_set)
+        data = serializer.data
+        self.assertEqual(data.popitem()[0], 'assign_time')    
         
