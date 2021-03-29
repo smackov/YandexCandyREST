@@ -203,6 +203,10 @@ class Courier(models.Model):
         the courier has notstarted orders, it method is being called.
         The method remove unsuitable order from notstarted orders set.
         """
+        
+        # If the courier doesn't have assigned orders -> Do nothing
+        if not self.current_set_of_orders:
+            return None
 
         notstarted_orders = self.current_set_of_orders.notstarted_orders.all()
         suitable_notstarted_orders = self.find_matching_orders(

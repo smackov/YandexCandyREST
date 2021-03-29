@@ -642,7 +642,22 @@ class CourierChangedPropertiesTestCase(TestCase):
         self.order_1.refresh_from_db()
         self.assertIsNone(self.order_2.set_of_orders)
         self.assertIsNone(self.order_1.set_of_orders)
-
+        
+    def test_if_courier_does_not_have_notstarted_orders(self):
+        self.order_set_1.finished_orders.set([self.order_1, self.order_2])
+        self.order_set_1.save()
+        self.courier.refresh_from_db()
+        self.courier.remove_unsuitable_orders()
+        self.assertIsNotNone(self.order_2.set_of_orders)
+        self.assertIsNotNone(self.order_1.set_of_orders)
+            
+    def test_if_courier_does_not_have_assigned_set_orders(self):
+        self.courier.current_set_of_orders = None
+        self.courier.save()
+        self.courier.remove_unsuitable_orders()
+        self.courier.refresh_from_db()
+        self.assertIsNone(self.courier.current_set_of_orders)
+        
 
 class CourierGetFinishedOrdersTestCase(TestCase):
     """
