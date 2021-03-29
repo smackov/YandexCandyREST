@@ -5,6 +5,7 @@ The models.
 import collections
 from typing import Optional, Tuple
 from operator import attrgetter
+from rich import inspect
 
 from django.db import models
 from django.core.exceptions import FieldError
@@ -118,7 +119,7 @@ class Courier(models.Model):
             rate = RATE_OF_PAYMENT.get(order.set_of_orders.courier_type)
             payment = 500 * rate
             order_payments.append(payment)
-        return sum(order_payments)    
+        return sum(order_payments)
 
     def assign_orders(self) -> Optional['AssignedOrderSet']:
         """
@@ -152,20 +153,27 @@ class Courier(models.Model):
         # orders, then return None.
         return None
 
-    def find_matching_orders(self):
+    def find_matching_orders(self, queryset=None):
         """
         Find the matching orders that mathes by parameters: 
         region, weight and delivery/working hours.
         """
 
+        # If queryset is None -> get all orders
+        # Queryset may isn't None when the properties of the courier are
+        # being changed and the queryset would be the all notstarted orders
+        if queryset is None:
+            queryset = Order.objects.all()
+            
+            # We here if we attempt assign orders to the courier
+            # then any order hasn't be included in active assign_set
+            queryset = queryset.filter(set_of_orders=None)
+
         # Weight of each order has to be less or equal Courier's load capacity
-        orders = Order.objects.filter(weight__lte=self.load_capacity)
+        orders = queryset.filter(weight__lte=self.load_capacity)
 
         # Orders hasn't had been completed already
         orders = orders.filter(complete_time=None)
-
-        # Order hasn't be included in active assign_set
-        orders = orders.filter(set_of_orders=None)
 
         # Region of order has to be in courier list of regions he works in
         orders = orders.filter(region__in=self.regions.all())
@@ -187,6 +195,28 @@ class Courier(models.Model):
         # Filter orders completed by the current courier
         orders = orders.filter(set_of_orders__courier=self)
         return orders
+
+    def remove_unsuitable_orders(self):
+        """
+        When the courier parameters are being changed and
+
+        the courier has notstarted orders, it method is being called.
+        The method remove unsuitable order from notstarted orders set.
+        """
+
+        notstarted_orders = self.current_set_of_orders.notstarted_orders.all()
+        suitable_notstarted_orders = self.find_matching_orders(
+            queryset=notstarted_orders)
+        
+        # Unset set_of_orders of unsuitable_notstarted_orders
+        for order in notstarted_orders:
+            if not order in suitable_notstarted_orders:
+                order.set_of_orders = None
+                order.save()
+        
+        # Set only suitable orders
+        self.current_set_of_orders.notstarted_orders.set(
+            suitable_notstarted_orders)
 
     def _filter_orders_by_delivery_hours(self, orders):
         """

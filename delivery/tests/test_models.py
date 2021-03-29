@@ -468,17 +468,17 @@ class CourierEarningsTestCase(TestCase):
             courier=self.another_courier,
             courier_type=self.another_courier.courier_type)
         self.order_set_4.finished_orders.set([self.order_4])
-        
+
     def test_earnings_when_first_two_orders_and_courier_is_foot(self):
         excpected_earnings = 2000
         self.assertEqual(self.courier.earnings, excpected_earnings)
-        
+
     def test_earnings_when_first_two_orders_and_courier_is_foot_and_bike(self):
         self.order_set_1.courier_type = 'bike'
         self.order_set_1.save()
         excpected_earnings = 3500
         self.assertEqual(self.courier.earnings, excpected_earnings)
-        
+
     def test_earnings_when_first_two_orders_and_courier_is_car_and_bike(self):
         self.order_set_1.courier_type = 'bike'
         self.order_set_1.save()
@@ -486,13 +486,13 @@ class CourierEarningsTestCase(TestCase):
         self.order_set_2.save()
         excpected_earnings = 7000
         self.assertEqual(self.courier.earnings, excpected_earnings)
-        
+
     def test_earnings_when_first_two_orders_and_courier_is_foot_and_car(self):
         self.order_set_2.courier_type = 'car'
         self.order_set_2.save()
         excpected_earnings = 5500
         self.assertEqual(self.courier.earnings, excpected_earnings)
-        
+
     def test_earnings_when_not_finished_orders(self):
         self.order_1.complete_time = None
         self.order_1.save()
@@ -500,6 +500,148 @@ class CourierEarningsTestCase(TestCase):
         self.order_2.save()
         excpected_earnings = 0
         self.assertEqual(self.courier.earnings, excpected_earnings)
+
+
+class CourierChangedPropertiesTestCase(TestCase):
+    """
+    The test case for 'earnings' property of Courier model.
+    """
+
+    def setUp(self):
+        # Create regions: 1, 2, 3, 4, 5
+        for region_number in range(1, 6):
+            region = Region.objects.create(id=region_number)
+            setattr(self, f'region_{region_number}', region)
+
+        # Create courier
+        self.courier = Courier.objects.create(
+            courier_id=1, courier_type='foot')
+        self.courier.regions.set([1, 2, 3])
+        self.another_courier = Courier.objects.create(
+            courier_id=2, courier_type='bike')
+
+        # Create working hours
+        self.working_hours_1 = WorkingHours.objects.create(
+            start=time(hour=9), end=time(hour=12), courier=self.courier)
+
+        # Times
+        self.now = datetime.now()
+        now = self.now
+        self.time = datetime(
+            year=now.year, month=now.month, day=now.day, hour=now.hour,
+            minute=now.minute, second=now.second, tzinfo=timezone.utc)
+        self.time += timedelta(seconds=10)
+        self.time_delta = timedelta(minutes=60, seconds=12)
+
+        # Order data
+        self.order_data_1 = {
+            'order_id': 1,
+            'weight': 4,
+            'region': self.region_1,
+        }
+        self.order_data_2 = {
+            'order_id': 2,
+            'weight': 3,
+            'region': self.region_2,
+        }
+        self.order_data_3 = {
+            'order_id': 3,
+            'weight': 14,
+            'region': self.region_2,
+        }
+        self.order_data_4 = {
+            'order_id': 4,
+            'weight': 40,
+            'region': self.region_2,
+        }
+        self.order_1 = Order.objects.create(**self.order_data_1)
+        self.order_2 = Order.objects.create(**self.order_data_2)
+        self.order_3 = Order.objects.create(**self.order_data_3)
+        self.order_4 = Order.objects.create(**self.order_data_4)
+
+        # Create delivery hours
+        self.delivery_hours_1 = DeliveryHours.objects.create(
+            start=time(hour=9), end=time(hour=12), order=self.order_1)
+        self.delivery_hours_2 = DeliveryHours.objects.create(
+            start=time(hour=9), end=time(hour=12), order=self.order_2)
+        self.delivery_hours_2 = DeliveryHours.objects.create(
+            start=time(hour=15), end=time(hour=20), order=self.order_3)
+        self.delivery_hours_2 = DeliveryHours.objects.create(
+            start=time(hour=15), end=time(hour=20), order=self.order_4)
+
+        # Create order set
+        self.order_set_1 = AssignedOrderSet.objects.create(
+            courier=self.courier, courier_type=self.courier.courier_type)
+        self.order_set_1.notstarted_orders.set([self.order_1, self.order_2])
+        self.order_1.set_of_orders = self.order_set_1
+        self.order_1.save()
+        self.order_2.set_of_orders = self.order_set_1
+        self.order_2.save()
+        self.courier.current_set_of_orders = self.order_set_1
+        self.courier.save()
+
+        # Create order set
+        self.order_set_3 = AssignedOrderSet.objects.create(
+            courier=self.courier, courier_type=self.courier.courier_type)
+        self.order_set_3.notstarted_orders.set([self.order_3])
+
+        # Create order set
+        self.order_set_4 = AssignedOrderSet.objects.create(
+            courier=self.another_courier,
+            courier_type=self.another_courier.courier_type)
+        self.order_set_4.notstarted_orders.set([self.order_4])
+
+    def test_notstarted_orders_when_change_courier_regions(self):
+        notstarted_orders = self.courier.current_set_of_orders.notstarted_orders.all()
+        self.assertEqual(list(notstarted_orders), [self.order_1, self.order_2])
+        
+        self.courier.regions.set([1])
+        self.courier.remove_unsuitable_orders()
+        self.courier.refresh_from_db()
+        self.order_set_1.refresh_from_db()
+        notstarted_orders = self.courier.current_set_of_orders.notstarted_orders.all()
+        self.assertEqual(list(notstarted_orders), [self.order_1])
+        
+        self.order_2.refresh_from_db()
+        self.assertIsNone(self.order_2.set_of_orders)
+        
+        self.courier.regions.set([])
+        self.courier.remove_unsuitable_orders()
+        self.courier.refresh_from_db()
+        self.order_set_1.refresh_from_db()
+        notstarted_orders = self.courier.current_set_of_orders.notstarted_orders.all()
+        self.assertEqual(list(notstarted_orders), [])
+        
+        self.order_1.refresh_from_db()
+        self.assertIsNone(self.order_1.set_of_orders)
+        
+        self.order_2.refresh_from_db()
+        self.assertIsNone(self.order_2.set_of_orders)
+
+    def test_notstarted_orders_when_change_courier_type(self):
+        notstarted_orders = self.courier.current_set_of_orders.notstarted_orders.all()
+        self.assertEqual(list(notstarted_orders), [self.order_1, self.order_2])
+        self.courier.courier_type = 'car'
+        self.courier.remove_unsuitable_orders()
+        self.courier.refresh_from_db()
+        self.order_set_1.refresh_from_db()
+        notstarted_orders = self.courier.current_set_of_orders.notstarted_orders.all()
+        self.assertEqual(list(notstarted_orders), [self.order_1, self.order_2])
+
+    def test_notstarted_orders_when_change_courier_working_hours(self):
+        notstarted_orders = self.courier.current_set_of_orders.notstarted_orders.all()
+        self.assertEqual(list(notstarted_orders), [self.order_1, self.order_2])
+        self.working_hours_1.start = time(hour=6)
+        self.working_hours_1.end = time(hour=7)
+        self.working_hours_1.save()
+        self.courier.remove_unsuitable_orders()
+        self.order_set_1.refresh_from_db()
+        notstarted_orders = self.courier.current_set_of_orders.notstarted_orders.all()
+        self.assertEqual(list(notstarted_orders), [])
+        self.order_2.refresh_from_db()
+        self.order_1.refresh_from_db()
+        self.assertIsNone(self.order_2.set_of_orders)
+        self.assertIsNone(self.order_1.set_of_orders)
 
 
 class CourierGetFinishedOrdersTestCase(TestCase):
