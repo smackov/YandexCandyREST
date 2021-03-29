@@ -237,10 +237,8 @@ class AssignOrdersSetSerializerTestCase(TestCase):
         
     def test_field_count(self):
         orders = Order.objects.all()
-        print(orders)
         serializer = AssignOrderSetSerializer(self.order_set)
         data = serializer.data
-        print('\n\nDATA: ', data)
         self.assertCountEqual(data.keys(), ['assign_time', 'orders'])
     
     def test_assign_time_is_the_last(self):
