@@ -9,8 +9,6 @@ from operator import attrgetter
 from django.db import models
 from django.core.exceptions import FieldError
 
-from rich import inspect
-
 
 COURIER_TYPES = [
     ('foot', 'Foot'),
@@ -72,7 +70,7 @@ class Courier(models.Model):
                          "absents in COURIER_LOAD_CAPACITY")
 
     @property
-    def rating(self):
+    def rating(self) -> float:
         """
         The rating of courier.
 
@@ -82,12 +80,9 @@ class Courier(models.Model):
           where 
         td [i] - average time of order delivery for region i (in seconds).
         """
-
-        # Find all completed orders
-        orders = Order.objects.filter(complete_time__isnull=False)
-
-        # Filter orders completed by the current courier
-        orders = orders.filter(set_of_orders__courier=self)
+        
+        # Get all finished orders by the current courier
+        orders = self.get_finished_orders()
 
         # If courier doesn't have completed orders - return None
         if orders.count() == 0:
@@ -95,7 +90,8 @@ class Courier(models.Model):
 
         # Find the minimum average time for all districts and calculate rating
         t = self._calculate_minimum_average_time_for_all_regions(orders=orders)
-        return (60*60 - min(t, 60*60))/(60*60) * 5
+        rating = (60*60 - min(t, 60*60))/(60*60) * 5
+        return round(rating, 2)
 
     def assign_orders(self) -> Optional['AssignedOrderSet']:
         """
@@ -151,6 +147,18 @@ class Courier(models.Model):
         # Courier's working hours
         orders = self._filter_orders_by_delivery_hours(orders=orders)
 
+        return orders
+    
+    def get_finished_orders(self):
+        """
+        Return all the orders that are finished and belong the courier.
+        """
+        
+        # Find all completed orders
+        orders = Order.objects.filter(complete_time__isnull=False)
+        
+        # Filter orders completed by the current courier
+        orders = orders.filter(set_of_orders__courier=self)
         return orders
 
     def _filter_orders_by_delivery_hours(self, orders):
@@ -234,10 +242,9 @@ class Courier(models.Model):
         """
         Given a list of orders. Find average delivery time in seconds.
         """
-        inspect(orders)
+        
         # The orders must be sorted by 'complete_time' field
         orders = sorted(orders, key=attrgetter('complete_time'))
-        inspect(orders)
         
         # Time of first order calculates with another formule
         # It's delta of assign_time and complete_time

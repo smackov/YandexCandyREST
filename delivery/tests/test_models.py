@@ -252,8 +252,12 @@ class CourierRatingTestCase(TestCase):
             courier_id=2, courier_type='bike')
 
         # Times
-        self.time = datetime(year=2021, month=10, day=1,
-                             hour=12, tzinfo=timezone.utc)
+        self.now = datetime.now()
+        now = self.now
+        self.time = datetime(
+            year=now.year, month=now.month, day=now.day, hour=now.hour,
+            minute=now.minute, second=now.second, tzinfo=timezone.utc)
+        self.time += timedelta(seconds=10)
         self.time_delta = timedelta(minutes=60, seconds=12)
 
         # Order data
@@ -343,7 +347,7 @@ class CourierRatingTestCase(TestCase):
         self.assertTrue(isinstance(average_time_in_seconds, int))
         self.assertEqual(average_time_in_seconds,
                          self.time_delta.total_seconds())
-        
+
         self.order_1.complete_time = self.order_1.complete_time + 3 * self.time_delta
 
         average_time_in_seconds = self.courier._calculate_minimum_average_time_for_all_regions(
@@ -351,6 +355,138 @@ class CourierRatingTestCase(TestCase):
         self.assertTrue(isinstance(average_time_in_seconds, int))
         self.assertEqual(average_time_in_seconds,
                          self.time_delta.total_seconds() * 2)
+
+    def test_get_right_rating(self):
+        # Set order 1 as complete
+        self.order_1.complete_time = self.time
+        self.order_1.set_of_orders = self.order_set_1
+        self.order_1.save()
+
+        # Set order_2 as complete
+        self.order_2.complete_time = self.time
+        self.order_2.set_of_orders = self.order_set_2
+        self.order_2.save()
+
+        # Get order_2 because it was made later than order_1
+        order = self.order_2
+        excpected_t = order.complete_time - order.set_of_orders.assign_time
+        excpected_t = round(excpected_t.total_seconds())
+        excpected_rating = (60*60 - min(excpected_t, 60*60))/(60*60) * 5
+        self.assertEqual(round(excpected_rating, 2), self.courier.rating)
+
+    def test_get_rating_when_not_finished_orders(self):
+        # Set order 1 as complete
+        self.order_1.complete_time = None
+        self.order_1.save()
+
+        # Set order_2 as complete
+        self.order_2.complete_time = None
+        self.order_2.save()
+
+        self.assertIsNone(self.courier.rating)
+
+
+class CourierGetFinishedOrdersTestCase(TestCase):
+    """
+    The test case for 'get_finished_orders' method of Courier model.
+    """
+
+    def setUp(self):
+        # Create regions: 1, 2, 3, 4, 5
+        for region_number in range(1, 6):
+            region = Region.objects.create(id=region_number)
+            setattr(self, f'region_{region_number}', region)
+
+        # Create courier
+        self.courier = Courier.objects.create(
+            courier_id=1, courier_type='foot')
+        self.another_courier = Courier.objects.create(
+            courier_id=2, courier_type='bike')
+
+        # Times
+        self.time = datetime(year=2021, month=10, day=1,
+                             hour=12, tzinfo=timezone.utc)
+        self.time_delta = timedelta(minutes=60, seconds=12)
+
+        # Order data
+        self.order_data_1 = {
+            'order_id': 1,
+            'weight': 4,
+            'region': self.region_1,
+            'complete_time': self.time + self.time_delta*2,
+        }
+        self.order_data_2 = {
+            'order_id': 2,
+            'weight': 3,
+            'region': self.region_2,
+            'complete_time': self.time,
+        }
+        self.order_data_3 = {
+            'order_id': 3,
+            'weight': 14,
+            'region': self.region_2,
+            'complete_time': self.time + self.time_delta,
+        }
+        self.order_data_4 = {
+            'order_id': 4,
+            'weight': 40,
+            'region': self.region_2,
+        }
+        self.order_1 = Order.objects.create(**self.order_data_1)
+        self.order_2 = Order.objects.create(**self.order_data_2)
+        self.order_3 = Order.objects.create(**self.order_data_3)
+        self.order_4 = Order.objects.create(**self.order_data_4)
+
+        # Create order set
+        self.order_set_1 = AssignedOrderSet.objects.create(
+            courier=self.courier, courier_type=self.courier.courier_type)
+        self.order_set_1.finished_orders.set([self.order_1])
+        self.order_1.complete_time = self.time
+        self.order_1.set_of_orders = self.order_set_1
+        self.order_1.save()
+
+        # Create order set
+        self.order_set_2 = AssignedOrderSet.objects.create(
+            courier=self.courier, courier_type=self.courier.courier_type)
+        self.order_set_2.finished_orders.set([self.order_2])
+        self.order_2.complete_time = self.time
+        self.order_2.set_of_orders = self.order_set_2
+        self.order_2.save()
+
+        # Create order set
+        self.order_set_3 = AssignedOrderSet.objects.create(
+            courier=self.courier, courier_type=self.courier.courier_type)
+        self.order_set_3.finished_orders.set([self.order_3])
+
+        # Create order set
+        self.order_set_4 = AssignedOrderSet.objects.create(
+            courier=self.another_courier,
+            courier_type=self.another_courier.courier_type)
+        self.order_set_4.finished_orders.set([self.order_4])
+
+    def test_get_finished_orders_for_courier(self):
+        orders = self.courier.get_finished_orders()
+        excpected_orders = [self.order_1, self.order_2]
+        self.assertEqual(list(orders), excpected_orders)
+
+    def test_get_finished_orders_for_courier_when_order_4_has_complete_time(self):
+        self.order_4.complete_time = self.time
+        self.order_4.save()
+        orders = self.courier.get_finished_orders()
+        excpected_orders = [self.order_1, self.order_2]
+        self.assertEqual(list(orders), excpected_orders)
+
+    def test_get_finished_orders_for_courier_when_1_match(self):
+        self.order_2.complete_time = None
+        self.order_2.save()
+        orders = self.courier.get_finished_orders()
+        excpected_orders = [self.order_1]
+        self.assertEqual(list(orders), excpected_orders)
+
+    def test_get_finished_orders_for_another_courier(self):
+        orders = self.another_courier.get_finished_orders()
+        excpected_orders = []
+        self.assertEqual(list(orders), excpected_orders)
 
 
 class OrderTestCase(TestCase):
