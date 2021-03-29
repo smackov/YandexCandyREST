@@ -5,7 +5,6 @@ The models.
 import collections
 from typing import Optional, Tuple
 from operator import attrgetter
-from rich import inspect
 
 from django.db import models
 from django.core.exceptions import FieldError
