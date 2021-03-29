@@ -18,7 +18,8 @@ from .serializers import (
     AssignOrderSetSerializer,
     CompleteOrderSerializer)
 from .models import Courier, Order
-from .exceptions import OrderAssignBadRequest
+from .exceptions import (OrderAssignBadRequest,
+                         NoDataProvidedBadRequest)
 
 
 class CourierListAPI(APIView):
@@ -30,8 +31,13 @@ class CourierListAPI(APIView):
 
     @transaction.atomic
     def post(self, request):
+        # If no data key and data isn't dict
+        if (not isinstance(request.data, dict)
+            or request.data.get('data') is None):
+            raise NoDataProvidedBadRequest
+        # Deserializer data
         serializer = CourierItemPostSerializer(
-            data=request.data['data'], many=True)
+            data=request.data.get('data'), many=True)
         if serializer.is_valid(raise_exception=True):
             serializer.save()
             response_data = {'couriers': serializer.data}
@@ -60,7 +66,7 @@ class CourierItemAPI(APIView):
             serializer.save()
             return Response(serializer.data, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
+
     def get(self, request, pk):
         courier = self.get_object(pk=pk)
         serializer = CourierDetailSerializer(courier)
@@ -76,8 +82,13 @@ class OrderListAPI(APIView):
 
     @transaction.atomic
     def post(self, request):
+        # If no data key and data isn't dict
+        if (not isinstance(request.data, dict)
+            or request.data.get('data') is None):
+            raise NoDataProvidedBadRequest
+        # Deserializer data
         serializer = OrderSerializer(
-            data=request.data['data'], many=True)
+            data=request.data.get('data'), many=True)
         if serializer.is_valid(raise_exception=True):
             orders = serializer.save()
             orders_ids = OrderIdSerializer(orders, many=True)
@@ -148,7 +159,7 @@ class OrdersCompleteAPI(APIView):
 
         # If all data is valid and the instances exist
         is_success, _ = order.complete(courier=courier,
-                       complete_time=serializer.data['complete_time'])
+                                       complete_time=serializer.data['complete_time'])
         if is_success:
             return Response({'order_id': order.order_id}, status=status.HTTP_200_OK)
         return Response(status=status.HTTP_400_BAD_REQUEST)

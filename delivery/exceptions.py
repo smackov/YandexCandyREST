@@ -12,6 +12,12 @@ class OrderAssignBadRequest(APIException):
     status_code = 400
     default_detail = "Courier doesn't exist"
     default_code = 'Bad request'
+
+
+class NoDataProvidedBadRequest(APIException):
+    status_code = 400
+    default_detail = "No data provided"
+    default_code = 'Bad request'
     
 
 def validate_exception_handler(exc, context):
@@ -24,7 +30,7 @@ def validate_exception_handler(exc, context):
     # Call REST framework's default exception handler first,
     # to get the standard error response.
     response = exception_handler(exc, context)
-
+    
     # check that a ValidationError exception is raised
     if isinstance(exc, ValidationError):
         path = context['request'].stream.path
@@ -73,7 +79,6 @@ def orders_exception_handler(response, context):
         order_id = order_data.get('order_id')
         if order_id and initial_errors:
             error_dict = {'id': order_id}
-            print(initial_errors)
             error_dict.update(initial_errors)
             formated_data.append(error_dict)
     
