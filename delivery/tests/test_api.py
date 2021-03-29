@@ -2,7 +2,7 @@
 Test api.
 """
 
-from datetime import time, datetime, timezone
+from datetime import time, datetime, timezone, timedelta
 import json
 
 from rest_framework.test import APITestCase
@@ -87,6 +87,17 @@ class CourierItemAPITestCase(APITestCase):
     """
 
     def setUp(self):
+        # Create regions: 1, 2, 3, 4, 5
+        for region_number in range(1, 6):
+            region = Region.objects.create(id=region_number)
+            setattr(self, f'region_{region_number}', region)
+
+        # Create courier
+        self.courier = Courier.objects.create(
+            courier_id=1, courier_type='foot')
+        self.courier.regions.set([1, 2, 3])
+        self.another_courier = Courier.objects.create(
+            courier_id=2, courier_type='bike')
 
         # Input data
         self.input_data = {'data': []}
@@ -104,21 +115,76 @@ class CourierItemAPITestCase(APITestCase):
         }
         self.input_many_data = [self.input_data_foot, self.input_data_bike]
 
-        # Create regions: 1, 2, 3, 4, 5
-        for region_number in range(1, 6):
-            region = Region.objects.create(id=region_number)
-            setattr(self, f'region_{region_number}', region)
-
-        # Create courier
-        self.courier = Courier.objects.create(
-            courier_id=1, courier_type='car')
-        self.courier.regions.set([1, 2, 3])
-
         # Create working hours
         self.working_hours_1 = WorkingHours.objects.create(
             start=time(hour=9), end=time(hour=12), courier=self.courier)
         self.working_hours_2 = WorkingHours.objects.create(
             start=time(hour=18), end=time(hour=20), courier=self.courier)
+
+        # Times
+        self.now = datetime.now()
+        now = self.now
+        self.time = datetime(
+            year=now.year, month=now.month, day=now.day, hour=now.hour,
+            minute=now.minute, second=now.second, tzinfo=timezone.utc)
+        self.time += timedelta(seconds=10)
+        self.time_delta = timedelta(minutes=60, seconds=12)
+
+        # Order data
+        self.order_data_1 = {
+            'order_id': 1,
+            'weight': 4,
+            'region': self.region_1,
+            'complete_time': self.time + self.time_delta*2,
+        }
+        self.order_data_2 = {
+            'order_id': 2,
+            'weight': 3,
+            'region': self.region_2,
+            'complete_time': self.time,
+        }
+        self.order_data_3 = {
+            'order_id': 3,
+            'weight': 14,
+            'region': self.region_2,
+            'complete_time': self.time + self.time_delta,
+        }
+        self.order_data_4 = {
+            'order_id': 4,
+            'weight': 40,
+            'region': self.region_2,
+        }
+        self.order_1 = Order.objects.create(**self.order_data_1)
+        self.order_2 = Order.objects.create(**self.order_data_2)
+        self.order_3 = Order.objects.create(**self.order_data_3)
+        self.order_4 = Order.objects.create(**self.order_data_4)
+
+        # Create order set
+        self.order_set_1 = AssignedOrderSet.objects.create(
+            courier=self.courier, courier_type=self.courier.courier_type)
+        self.order_set_1.finished_orders.set([self.order_1])
+        self.order_1.complete_time = self.time
+        self.order_1.set_of_orders = self.order_set_1
+        self.order_1.save()
+
+        # Create order set
+        self.order_set_2 = AssignedOrderSet.objects.create(
+            courier=self.courier, courier_type=self.courier.courier_type)
+        self.order_set_2.finished_orders.set([self.order_2])
+        self.order_2.complete_time = self.time
+        self.order_2.set_of_orders = self.order_set_2
+        self.order_2.save()
+
+        # Create order set
+        self.order_set_3 = AssignedOrderSet.objects.create(
+            courier=self.courier, courier_type=self.courier.courier_type)
+        self.order_set_3.finished_orders.set([self.order_3])
+
+        # Create order set
+        self.order_set_4 = AssignedOrderSet.objects.create(
+            courier=self.another_courier,
+            courier_type=self.another_courier.courier_type)
+        self.order_set_4.finished_orders.set([self.order_4])
 
     def test_changed_all_courier_fields(self):
         url = reverse('courier-item', args=[1])
@@ -131,6 +197,59 @@ class CourierItemAPITestCase(APITestCase):
         self.input_data_foot['courier_type'] = 'zuzu'
         response = self.client.patch(url, self.input_data_foot, format='json')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_get_when_two_first_orders_finished(self):
+        url = reverse('courier-item', args=[1])
+        response = self.client.get(url, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # Get order_2 because it was made later than order_1
+        order = self.order_2
+        excpected_t = order.complete_time - order.set_of_orders.assign_time
+        excpected_t = round(excpected_t.total_seconds())
+        excpected_rating = (60*60 - min(excpected_t, 60*60))/(60*60) * 5
+
+        excpected_data = {
+            "courier_id": 1,
+            "courier_type": "foot",
+            "regions": [1, 2, 3],
+            "working_hours": ["09:00-12:00", "18:00-20:00"],
+            "rating": round(excpected_rating, 2),
+            "earnings": 2000
+        }
+        self.assertEqual(json.loads(response.content), excpected_data)
+
+    def test_get_when_not_finished_orders(self):
+        # Set order 1 as complete
+        self.order_1.complete_time = None
+        self.order_1.save()
+
+        # Set order_2 as complete
+        self.order_2.complete_time = None
+        self.order_2.save()
+
+        url = reverse('courier-item', args=[1])
+        response = self.client.get(url, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        excpected_data = {
+            "courier_id": 1,
+            "courier_type": "foot",
+            "regions": [1, 2, 3],
+            "working_hours": ["09:00-12:00", "18:00-20:00"],
+            "earnings": 0
+        }
+        self.assertEqual(json.loads(response.content), excpected_data)
+
+    def test_get_404(self):
+        url = reverse('courier-item', args=[999])
+        response = self.client.get(url, format='json')
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+        excpected_data = {
+            "detail": "Not found."
+        }
+        self.assertEqual(json.loads(response.content), excpected_data)
 
 
 class OrderListAPITestCase(APITestCase):
@@ -349,7 +468,7 @@ class OrdersCompleteAPITestCase(APITestCase):
             'complete_time': "2021-03-24T12:39:07.42Z",
         }
         self.complete_time = datetime(
-            year=2021, month=3, day=24, hour=12, minute=39, second=7, 
+            year=2021, month=3, day=24, hour=12, minute=39, second=7,
             microsecond=420000, tzinfo=timezone.utc)
 
         # Create regions: 1, 2, 3, 4, 5
@@ -442,7 +561,7 @@ class OrdersCompleteAPITestCase(APITestCase):
         self.assertEqual(self.order_1.complete_time, self.complete_time)
         self.order_2.refresh_from_db()
         self.assertIsNone(self.order_2.complete_time)
-        
+
         # Check if the same answer and it is
         response = self.client.post(url, self.complete_data, format='json')
         self.assertEqual(response.status_code, status.HTTP_200_OK)

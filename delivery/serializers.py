@@ -191,6 +191,40 @@ class CourierItemPatchSerializer(serializers.ModelSerializer):
         return instance
 
 
+class CourierDetailSerializer(serializers.ModelSerializer):
+    """
+    This serializer for a detailed display of a specific courier.
+    """
+
+    regions = RegionSerializer(many=True)
+    working_hours = TimeIntervalSerializer(many=True)
+
+    class Meta:
+        model = Courier
+        fields = ['courier_id', 'courier_type', 'regions', 'working_hours']
+        read_only_fields = ['courier_id', 'courier_type', 'regions', 'working_hours']
+        
+    def to_representation(self, instance):
+        """
+        Add two additional fields:
+        
+        - rating (if courier have at least one finished order)
+        - earnings
+        """
+        
+        ret = super().to_representation(instance)
+        
+        # Add the rating field if the courier have finished order(-s)
+        rating = instance.rating
+        if rating:
+            ret['rating'] = rating
+        
+        # Add earnings field
+        ret['earnings'] = instance.earnings
+        return ret
+            
+        
+
 class CourierIdSerializer(serializers.Serializer):
     """
     The serializer for getting posts with one field: 'courier_id'

@@ -373,6 +373,7 @@ class CourierRatingTestCase(TestCase):
         excpected_t = round(excpected_t.total_seconds())
         excpected_rating = (60*60 - min(excpected_t, 60*60))/(60*60) * 5
         self.assertEqual(round(excpected_rating, 2), self.courier.rating)
+        self.assertTrue(0 <= self.courier.rating <= 5)
 
     def test_get_rating_when_not_finished_orders(self):
         # Set order 1 as complete

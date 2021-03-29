@@ -11,6 +11,7 @@ from django.db import transaction
 from .serializers import (
     CourierItemPostSerializer,
     CourierItemPatchSerializer,
+    CourierDetailSerializer,
     CourierIdSerializer,
     OrderSerializer,
     OrderIdSerializer,
@@ -39,7 +40,7 @@ class CourierListAPI(APIView):
 
 class CourierItemAPI(APIView):
     """
-    Api for updating courier instance.
+    Api for updating courier instance and for getting detail data.
 
     Get courier properties, valide them and update the courier.
     """
@@ -59,6 +60,11 @@ class CourierItemAPI(APIView):
             serializer.save()
             return Response(serializer.data, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    def get(self, request, pk):
+        courier = self.get_object(pk=pk)
+        serializer = CourierDetailSerializer(courier)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 class OrderListAPI(APIView):
