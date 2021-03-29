@@ -74,6 +74,85 @@
 
  * `0.0.0.0:8080` - отвечает за адрес и порт, на котором будет работать приложение
 
+### Запуск приложения с помощью Gunicorn и Supervisor
+
+Для запуска приложения с несколькими воркерами воспользуемся python-сервером Gunicorn. Supervisor работает в режиме "демона" и перезапускает процессы Gunicorn, если они вдруг перестают работать по каким-либо причинам, также он запускает все процессы сервера после перезагрузки системы.
+
+##### 2.1: Создание файла конфигурации Gunicorn:
+
+Создайте файл gunicorn_start в корневой папке пользователя, обслуживающего сервис (или в любое другое подходящее место). Запишите в него следующие данные:
+
+    #!/bin/bash
+
+    NAME="YandexRESTService"
+    DIR=/home/entrant/YandexCandyREST
+    USER=entrant
+    GROUP=entrant
+    WORKERS=3
+    BIND=0.0.0.0:8080
+    DJANGO_SETTINGS_MODULE=YandexCandyREST.settings
+    DJANGO_WSGI_MODULE=YandexCandyREST.wsgi
+    LOG_LEVEL=error
+
+    cd $DIR
+    source ./venv/bin/activate
+
+    export DJANGO_SETTINGS_MODULE=$DJANGO_SETTINGS_MODULE
+    export PYTHONPATH=$DIR:$PYTHONPATH
+
+    exec ./venv/bin/gunicorn ${DJANGO_WSGI_MODULE}:application \
+    --name $NAME \
+    --workers $WORKERS \
+    --user=$USER \
+    --group=$GROUP \
+    --bind=$BIND \
+    --log-level=$LOG_LEVEL \
+    --log-file=- 
+
+где:
+
+`NAME` - имя приложения (может быть любым)
+`DIR` - расположение приложения
+`USER` - пользователь, обслуживающий приложение
+`WORKERS` - количество процессов сервера
+`BIND` - адрес и порт сервера
+`DJANGO_SETTINGS_MODULE` - относительный путь расположения файла настроек приложения
+`DJANGO_WSGI_MODULE` - относительный путь расположения *wsgi* файла приложения
+`source` - относительный путь расположения виртуальной среды окружения Python 3
+
+##### 2.2: Сделать файл gunicorn_start  исполняемым:
+
+    chmod u+x gunicorn_start
+
+##### 2.3: Создание папок для хранения сокета и логов:
+
+Пример расположения папок в корневой папке пользователя, обслуживающего приложение. Также создать файл логов:
+
+    mkdir run logs
+    touch logs/gunicorn.log
+
+##### 2.4: Конфигурирование Supervisor:
+
+Создать новый Supervisor файл:
+
+    sudo vim /etc/supervisor/conf.d/YandexRESTService.conf
+
+Записать в него данные:
+
+    [program:yandex_rest]
+    command=/home/entrant/gunicorn_start
+    user=entrant
+    autostart=true
+    autorestart=true
+    redirect_stderr=true
+    stdout_logfile=/home/entrant/logs/gunicorn.log
+
+##### 2.5: Запуск Supervisor для нашего приложения:
+
+    sudo supervisorctl reread
+    sudo supervisorctl update
+
+
 ### Запуск тестов
 
 Следующие команды выполняются в терминале, находясь в корневой папке приложения. Команды представлены для случая, когда активирована виртуальная среда окружения для Python 3.
