@@ -5,7 +5,6 @@ The models.
 import collections
 from typing import Optional, Tuple
 from operator import attrgetter
-from rich import inspect
 
 from django.db import models
 from django.core.exceptions import FieldError
@@ -108,7 +107,6 @@ class Courier(models.Model):
 
         # Get all finished orders by the current courier
         orders = self.get_finished_orders()
-        inspect(orders)
 
         # If courier doesn't have completed orders - return zero
         if orders.count() == 0:

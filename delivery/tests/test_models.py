@@ -500,6 +500,7 @@ class CourierEarningsTestCase(TestCase):
         excpected_earnings = 0
         self.assertEqual(self.courier.earnings, excpected_earnings)
 
+
 class CourierGetFinishedOrdersTestCase(TestCase):
     """
     The test case for 'get_finished_orders' method of Courier model.
