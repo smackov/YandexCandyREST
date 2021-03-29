@@ -2,7 +2,7 @@
 The tests of models.
 """
 
-from datetime import datetime, time, timezone
+from datetime import datetime, time, timezone, timedelta
 
 from django.test import TestCase
 from django.core.exceptions import FieldError
@@ -176,8 +176,9 @@ class CourierAssignOrdersTestCase(TestCase):
         orders = self.courier.find_matching_orders()
         self.assertEqual(len(orders), 0)
 
-    def test_find_orders_compete_time_filter(self):
-        self.order_1.complete_time = datetime.now()
+    def test_find_orders_complete_time_filter(self):
+        self.order_1.complete_time = datetime(
+            year=2020, month=2, day=1, hour=2, tzinfo=timezone.utc)
         self.order_1.save()
         orders = self.courier.find_matching_orders()
         self.assertEqual(len(orders), 0)
@@ -231,6 +232,125 @@ class CourierAssignOrdersTestCase(TestCase):
             start=time(hour=19), end=time(hour=20), order=self.order_1)
         orders = self.courier.find_matching_orders()
         self.assertEqual(len(orders), 1)
+
+
+class CourierRatingTestCase(TestCase):
+    """
+    The test case for 'rating' property of Courier model.
+    """
+
+    def setUp(self):
+        # Create regions: 1, 2, 3, 4, 5
+        for region_number in range(1, 6):
+            region = Region.objects.create(id=region_number)
+            setattr(self, f'region_{region_number}', region)
+
+        # Create courier
+        self.courier = Courier.objects.create(
+            courier_id=1, courier_type='foot')
+        self.another_courier = Courier.objects.create(
+            courier_id=2, courier_type='bike')
+
+        # Times
+        self.time = datetime(year=2021, month=10, day=1,
+                             hour=12, tzinfo=timezone.utc)
+        self.time_delta = timedelta(minutes=60, seconds=12)
+
+        # Order data
+        self.order_data_1 = {
+            'order_id': 1,
+            'weight': 4,
+            'region': self.region_1,
+            'complete_time': self.time + self.time_delta*2,
+        }
+        self.order_data_2 = {
+            'order_id': 2,
+            'weight': 3,
+            'region': self.region_2,
+            'complete_time': self.time,
+        }
+        self.order_data_3 = {
+            'order_id': 3,
+            'weight': 14,
+            'region': self.region_2,
+            'complete_time': self.time + self.time_delta,
+        }
+        self.order_data_4 = {
+            'order_id': 4,
+            'weight': 40,
+            'region': self.region_2,
+        }
+        self.order_1 = Order.objects.create(**self.order_data_1)
+        self.order_2 = Order.objects.create(**self.order_data_2)
+        self.order_3 = Order.objects.create(**self.order_data_3)
+        self.order_4 = Order.objects.create(**self.order_data_4)
+
+        # Create order set
+        self.order_set_1 = AssignedOrderSet.objects.create(
+            courier=self.courier, courier_type=self.courier.courier_type)
+        self.order_set_1.finished_orders.set([self.order_1])
+
+        # Create order set
+        self.order_set_2 = AssignedOrderSet.objects.create(
+            courier=self.courier, courier_type=self.courier.courier_type)
+        self.order_set_2.finished_orders.set([self.order_2])
+
+        # Create order set
+        self.order_set_3 = AssignedOrderSet.objects.create(
+            courier=self.courier, courier_type=self.courier.courier_type)
+        self.order_set_3.finished_orders.set([self.order_3])
+
+        # Create order set
+        self.order_set_4 = AssignedOrderSet.objects.create(
+            courier=self.another_courier,
+            courier_type=self.another_courier.courier_type)
+        self.order_set_4.finished_orders.set([self.order_4])
+
+    def test__find_average_time_for_orders_when_3_given_orders(self):
+        self.order_set_2.assign_time = self.time - self.time_delta
+        self.order_2.set_of_orders = self.order_set_2
+        orders = [self.order_1, self.order_2, self.order_3]
+        average_time = self.courier._find_average_time_for_orders(orders)
+        self.assertTrue(isinstance(average_time, int))
+        self.assertEqual(average_time, self.time_delta.total_seconds())
+
+    def test__find_average_time_for_orders_when_1_given_orders(self):
+        self.order_set_2.assign_time = self.time - self.time_delta
+        self.order_2.set_of_orders = self.order_set_2
+        orders = [self.order_2]
+        average_time = self.courier._find_average_time_for_orders(orders)
+        self.assertTrue(isinstance(average_time, int))
+        self.assertEqual(average_time, self.time_delta.total_seconds())
+
+    def test__calculate_minimum_average_time_for_all_regions(self):
+        # Difference 1 * self.time-delta
+        self.order_set_1.assign_time = self.order_1.complete_time - self.time_delta
+        self.order_1.set_of_orders = self.order_set_1
+
+        # Difference 2 * self.time-delta
+        self.order_set_2.assign_time = (
+            self.order_2.complete_time - 2 * self.time_delta)
+        self.order_2.set_of_orders = self.order_set_2
+        self.order_3.complete_time = (
+            self.order_2.complete_time + 2 * self.time_delta)
+        self.order_4.complete_time = (
+            self.order_3.complete_time + 2 * self.time_delta)
+
+        orders = [self.order_3, self.order_1, self.order_4, self.order_2]
+
+        average_time_in_seconds = self.courier._calculate_minimum_average_time_for_all_regions(
+            orders)
+        self.assertTrue(isinstance(average_time_in_seconds, int))
+        self.assertEqual(average_time_in_seconds,
+                         self.time_delta.total_seconds())
+        
+        self.order_1.complete_time = self.order_1.complete_time + 3 * self.time_delta
+
+        average_time_in_seconds = self.courier._calculate_minimum_average_time_for_all_regions(
+            orders)
+        self.assertTrue(isinstance(average_time_in_seconds, int))
+        self.assertEqual(average_time_in_seconds,
+                         self.time_delta.total_seconds() * 2)
 
 
 class OrderTestCase(TestCase):

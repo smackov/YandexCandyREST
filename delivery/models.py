@@ -2,10 +2,14 @@
 The models.
 """
 
+import collections
 from typing import Optional, Tuple
+from operator import attrgetter
 
 from django.db import models
 from django.core.exceptions import FieldError
+
+from rich import inspect
 
 
 COURIER_TYPES = [
@@ -67,20 +71,46 @@ class Courier(models.Model):
                          f"unresolved value='{self.courier_type}' that "
                          "absents in COURIER_LOAD_CAPACITY")
 
+    @property
+    def rating(self):
+        """
+        The rating of courier.
+
+        Formule:
+        rating = (60*60 - min(t, 60*60))/(60*60) * 5
+        t = min(td[1], td[2], ..., td[n])
+          where 
+        td [i] - average time of order delivery for region i (in seconds).
+        """
+
+        # Find all completed orders
+        orders = Order.objects.filter(complete_time__isnull=False)
+
+        # Filter orders completed by the current courier
+        orders = orders.filter(set_of_orders__courier=self)
+
+        # If courier doesn't have completed orders - return None
+        if orders.count() == 0:
+            return None
+
+        # Find the minimum average time for all districts and calculate rating
+        t = self._calculate_minimum_average_time_for_all_regions(orders=orders)
+        return (60*60 - min(t, 60*60))/(60*60) * 5
+
     def assign_orders(self) -> Optional['AssignedOrderSet']:
         """
         Find the appropriate orders and assign them to the courier.
         """
 
-        # If the courier has unfinished orders in `current_set_of_orders`, 
+        # If the courier has unfinished orders in `current_set_of_orders`,
         # then return `current_set_of_orders`.
         if self.current_set_of_orders:
             if self.current_set_of_orders.notstarted_orders.count() != 0:
                 return self.current_set_of_orders
-            
-        # If the courier doesn't have `current_set_of_orders` or has, but 
+
+        # If the courier doesn't have `current_set_of_orders` or has, but
         # its unfinished orders are over, then create new AssignedOrderSet
-        # for the courier and return it. 
+        # for the courier and return it.
         orders = self.find_matching_orders()
         if orders:
             # Create new AssignedOrderSet and pin it to the courier
@@ -94,29 +124,29 @@ class Courier(models.Model):
                 order.set_of_orders = self.current_set_of_orders
                 order.save()
             return self.current_set_of_orders
-            
+
         # But if we can't find appropriate
         # orders, then return None.
         return None
-    
+
     def find_matching_orders(self):
         """
         Find the matching orders that mathes by parameters: 
         region, weight and delivery/working hours.
         """
-        
+
         # Weight of each order has to be less or equal Courier's load capacity
         orders = Order.objects.filter(weight__lte=self.load_capacity)
-        
+
         # Orders hasn't had been completed already
         orders = orders.filter(complete_time=None)
 
         # Order hasn't be included in active assign_set
         orders = orders.filter(set_of_orders=None)
-        
+
         # Region of order has to be in courier list of regions he works in
         orders = orders.filter(region__in=self.regions.all())
-        
+
         # Orders has to have time intersections beetwen delivery hours and
         # Courier's working hours
         orders = self._filter_orders_by_delivery_hours(orders=orders)
@@ -127,7 +157,7 @@ class Courier(models.Model):
         """
         Returns matching orders from initial QuerySet: orders.
         """
-        
+
         matching_orders = []
         for order in orders:
             # Have we any intersections in all working hours
@@ -152,18 +182,18 @@ class Courier(models.Model):
         Find the time intersections in given delivery hours (1 item)
         and working hours of courier (many items).
         """
-        
+
         # Separate working hours to them starts and ends
         # it is necessary for comparison of times
         courier_starts, courier_ends = [], []
         for working_hours in self.working_hours.all():
             courier_starts.append(working_hours.start)
             courier_ends.append(working_hours.end)
-        
+
         # Give more brief names to delivery hours
         order_start = delivery_hours.start
         order_end = delivery_hours.end
-        
+
         # check each time matching option
         for courier_start, courier_end in zip(courier_starts, courier_ends):
             # if we have a partial intersection at least 1 minute
@@ -173,10 +203,63 @@ class Courier(models.Model):
             # If all working hours into delivery hours
             elif order_start <= courier_start and order_end >= courier_end:
                 return True
-            
+
         # The time intersections don't exist
         return False
 
+    def _calculate_minimum_average_time_for_all_regions(self, orders) -> int:
+        """
+        Find the minimum average time in seconds for all districts.
+
+        t = min(td[1], td[2], ..., td[n])
+          where 
+        td [i] - average time of order delivery for region i (in seconds).
+        """
+
+        # Sort orders by regions
+        regions = collections.defaultdict(list)
+        for order in orders:
+            regions[order.region].append(order)
+
+        # For each region find average times
+        average_times = []
+        for order_list in regions.values():
+            time = self._find_average_time_for_orders(orders=order_list)
+            average_times.append(time)
+        
+        # Find and return the minimum average time for all districts
+        return min(average_times)
+    
+    def _find_average_time_for_orders(self, orders) -> int:
+        """
+        Given a list of orders. Find average delivery time in seconds.
+        """
+        inspect(orders)
+        # The orders must be sorted by 'complete_time' field
+        orders = sorted(orders, key=attrgetter('complete_time'))
+        inspect(orders)
+        
+        # Time of first order calculates with another formule
+        # It's delta of assign_time and complete_time
+        order = orders[0]
+        time = order.complete_time - order.set_of_orders.assign_time
+        time = time.total_seconds()
+        
+        # If we have only 1 order
+        if len(orders) == 1:
+            return round(time)
+        
+        # If we have more than 1 order
+        times = [time]
+        for index, order in enumerate(orders[1:], start=1):
+            time = order.complete_time - orders[index-1].complete_time
+            times.append(time.total_seconds())
+
+        # Return average_time in seconds 
+        # (e.g. 30 or 48.23899 with microseconds)
+        average_time = sum(times) / len(times)
+        return round(average_time)
+    
 
 class Order(models.Model):
     """
@@ -202,22 +285,22 @@ class Order(models.Model):
     def __str__(self):
         return 'Order (order_id={}, weight={}, region={})'.format(
             self.order_id, self.weight, self.region.id)
-        
+
     def complete(self, courier, complete_time) -> Tuple[bool, str]:
         """
         Complete the order. 
-        
+
         Fill out complete_time.
         """
-        
+
         # If the order was not assigned
         if not self.set_of_orders:
             return False, 'The order was not assigned'
-        
+
         # If the order was assigned to another courier
         if self.set_of_orders.courier != courier:
             return False, 'The order was assigned to another courier'
-        
+
         # If data is valid:
         # Write compete time
         self.complete_time = complete_time
@@ -226,7 +309,7 @@ class Order(models.Model):
         # in its set_or_orders
         self.set_of_orders.notstarted_orders.remove(self)
         self.set_of_orders.finished_orders.add(self)
-        
+
         return True, 'OK'
 
 
@@ -238,7 +321,8 @@ class AssignedOrderSet(models.Model):
     of assigned orders is submitted (this model).
     """
 
-    courier = models.ForeignKey(Courier, on_delete=models.CASCADE)
+    courier = models.ForeignKey(
+        Courier, on_delete=models.CASCADE, related_name='all_assigned_sets')
     courier_type = models.CharField(
         max_length=4, choices=COURIER_TYPES)
     assign_time = models.DateTimeField(auto_now=True)
