@@ -386,6 +386,120 @@ class CourierRatingTestCase(TestCase):
         self.assertIsNone(self.courier.rating)
 
 
+class CourierEarningsTestCase(TestCase):
+    """
+    The test case for 'earnings' property of Courier model.
+    """
+
+    def setUp(self):
+        # Create regions: 1, 2, 3, 4, 5
+        for region_number in range(1, 6):
+            region = Region.objects.create(id=region_number)
+            setattr(self, f'region_{region_number}', region)
+
+        # Create courier
+        self.courier = Courier.objects.create(
+            courier_id=1, courier_type='foot')
+        self.another_courier = Courier.objects.create(
+            courier_id=2, courier_type='bike')
+
+        # Times
+        self.now = datetime.now()
+        now = self.now
+        self.time = datetime(
+            year=now.year, month=now.month, day=now.day, hour=now.hour,
+            minute=now.minute, second=now.second, tzinfo=timezone.utc)
+        self.time += timedelta(seconds=10)
+        self.time_delta = timedelta(minutes=60, seconds=12)
+
+        # Order data
+        self.order_data_1 = {
+            'order_id': 1,
+            'weight': 4,
+            'region': self.region_1,
+            'complete_time': self.time + self.time_delta*2,
+        }
+        self.order_data_2 = {
+            'order_id': 2,
+            'weight': 3,
+            'region': self.region_2,
+            'complete_time': self.time,
+        }
+        self.order_data_3 = {
+            'order_id': 3,
+            'weight': 14,
+            'region': self.region_2,
+            'complete_time': self.time + self.time_delta,
+        }
+        self.order_data_4 = {
+            'order_id': 4,
+            'weight': 40,
+            'region': self.region_2,
+        }
+        self.order_1 = Order.objects.create(**self.order_data_1)
+        self.order_2 = Order.objects.create(**self.order_data_2)
+        self.order_3 = Order.objects.create(**self.order_data_3)
+        self.order_4 = Order.objects.create(**self.order_data_4)
+
+        # Create order set
+        self.order_set_1 = AssignedOrderSet.objects.create(
+            courier=self.courier, courier_type=self.courier.courier_type)
+        self.order_set_1.finished_orders.set([self.order_1])
+        self.order_1.complete_time = self.time
+        self.order_1.set_of_orders = self.order_set_1
+        self.order_1.save()
+
+        # Create order set
+        self.order_set_2 = AssignedOrderSet.objects.create(
+            courier=self.courier, courier_type=self.courier.courier_type)
+        self.order_set_2.finished_orders.set([self.order_2])
+        self.order_2.complete_time = self.time
+        self.order_2.set_of_orders = self.order_set_2
+        self.order_2.save()
+
+        # Create order set
+        self.order_set_3 = AssignedOrderSet.objects.create(
+            courier=self.courier, courier_type=self.courier.courier_type)
+        self.order_set_3.finished_orders.set([self.order_3])
+
+        # Create order set
+        self.order_set_4 = AssignedOrderSet.objects.create(
+            courier=self.another_courier,
+            courier_type=self.another_courier.courier_type)
+        self.order_set_4.finished_orders.set([self.order_4])
+        
+    def test_earnings_when_first_two_orders_and_courier_is_foot(self):
+        excpected_earnings = 2000
+        self.assertEqual(self.courier.earnings, excpected_earnings)
+        
+    def test_earnings_when_first_two_orders_and_courier_is_foot_and_bike(self):
+        self.order_set_1.courier_type = 'bike'
+        self.order_set_1.save()
+        excpected_earnings = 3500
+        self.assertEqual(self.courier.earnings, excpected_earnings)
+        
+    def test_earnings_when_first_two_orders_and_courier_is_car_and_bike(self):
+        self.order_set_1.courier_type = 'bike'
+        self.order_set_1.save()
+        self.order_set_2.courier_type = 'car'
+        self.order_set_2.save()
+        excpected_earnings = 7000
+        self.assertEqual(self.courier.earnings, excpected_earnings)
+        
+    def test_earnings_when_first_two_orders_and_courier_is_foot_and_car(self):
+        self.order_set_2.courier_type = 'car'
+        self.order_set_2.save()
+        excpected_earnings = 5500
+        self.assertEqual(self.courier.earnings, excpected_earnings)
+        
+    def test_earnings_when_not_finished_orders(self):
+        self.order_1.complete_time = None
+        self.order_1.save()
+        self.order_2.complete_time = None
+        self.order_2.save()
+        excpected_earnings = 0
+        self.assertEqual(self.courier.earnings, excpected_earnings)
+
 class CourierGetFinishedOrdersTestCase(TestCase):
     """
     The test case for 'get_finished_orders' method of Courier model.

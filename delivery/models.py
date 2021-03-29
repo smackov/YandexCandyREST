@@ -5,6 +5,7 @@ The models.
 import collections
 from typing import Optional, Tuple
 from operator import attrgetter
+from rich import inspect
 
 from django.db import models
 from django.core.exceptions import FieldError
@@ -26,6 +27,12 @@ ORDER_WEIGHT_CONSTRAINTS = {
     # Minimum validated value is 0.01 after deserialization
     'min_value': 0.009,
     'max_value': 50,
+}
+
+RATE_OF_PAYMENT = {
+    'foot': 2,
+    'bike': 5,
+    'car': 9,
 }
 
 
@@ -80,7 +87,7 @@ class Courier(models.Model):
           where 
         td [i] - average time of order delivery for region i (in seconds).
         """
-        
+
         # Get all finished orders by the current courier
         orders = self.get_finished_orders()
 
@@ -92,6 +99,28 @@ class Courier(models.Model):
         t = self._calculate_minimum_average_time_for_all_regions(orders=orders)
         rating = (60*60 - min(t, 60*60))/(60*60) * 5
         return round(rating, 2)
+
+    @property
+    def earnings(self) -> int:
+        """
+        The sum of money that the current courier gained.
+        """
+
+        # Get all finished orders by the current courier
+        orders = self.get_finished_orders()
+        inspect(orders)
+
+        # If courier doesn't have completed orders - return zero
+        if orders.count() == 0:
+            return 0
+
+        # Find the sum of all money that the courier gained
+        order_payments = []
+        for order in orders:
+            rate = RATE_OF_PAYMENT.get(order.set_of_orders.courier_type)
+            payment = 500 * rate
+            order_payments.append(payment)
+        return sum(order_payments)    
 
     def assign_orders(self) -> Optional['AssignedOrderSet']:
         """
@@ -148,15 +177,15 @@ class Courier(models.Model):
         orders = self._filter_orders_by_delivery_hours(orders=orders)
 
         return orders
-    
+
     def get_finished_orders(self):
         """
         Return all the orders that are finished and belong the courier.
         """
-        
+
         # Find all completed orders
         orders = Order.objects.filter(complete_time__isnull=False)
-        
+
         # Filter orders completed by the current courier
         orders = orders.filter(set_of_orders__courier=self)
         return orders
@@ -234,39 +263,39 @@ class Courier(models.Model):
         for order_list in regions.values():
             time = self._find_average_time_for_orders(orders=order_list)
             average_times.append(time)
-        
+
         # Find and return the minimum average time for all districts
         return min(average_times)
-    
+
     def _find_average_time_for_orders(self, orders) -> int:
         """
         Given a list of orders. Find average delivery time in seconds.
         """
-        
+
         # The orders must be sorted by 'complete_time' field
         orders = sorted(orders, key=attrgetter('complete_time'))
-        
+
         # Time of first order calculates with another formule
         # It's delta of assign_time and complete_time
         order = orders[0]
         time = order.complete_time - order.set_of_orders.assign_time
         time = time.total_seconds()
-        
+
         # If we have only 1 order
         if len(orders) == 1:
             return round(time)
-        
+
         # If we have more than 1 order
         times = [time]
         for index, order in enumerate(orders[1:], start=1):
             time = order.complete_time - orders[index-1].complete_time
             times.append(time.total_seconds())
 
-        # Return average_time in seconds 
+        # Return average_time in seconds
         # (e.g. 30 or 48.23899 with microseconds)
         average_time = sum(times) / len(times)
         return round(average_time)
-    
+
 
 class Order(models.Model):
     """
